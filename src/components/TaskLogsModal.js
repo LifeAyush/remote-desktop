@@ -18,8 +18,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import DownloadIcon from '@mui/icons-material/Download';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import { usePolling } from '../utils/usePolling';
-import { ThemeContext } from '../contexts/ThemeContext';
+import { usePolling } from '../utils/api';
+import ThemeContext from '../contexts/ThemeContext';
 
 const TaskLogsModal = ({ 
   open, 

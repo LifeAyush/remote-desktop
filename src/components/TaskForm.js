@@ -27,7 +27,6 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import InfoIcon from '@mui/icons-material/Info';
 import formatDistanceToNow from 'date-fns/formatDistanceToNow';
-import bytesToSize from '../utils/bytesToSize';
 
 const TaskForm = ({ ecrImages, onSubmit, submitting, activeStep, onNextStep, onPrevStep }) => {
   // Form state
@@ -109,7 +108,7 @@ const TaskForm = ({ ecrImages, onSubmit, submitting, activeStep, onNextStep, onP
                     </TableRow>
                     <TableRow>
                       <TableCell>Size</TableCell>
-                      <TableCell>{bytesToSize(selectedImage.sizeInBytes)}</TableCell>
+                      <TableCell>{selectedImage.sizeInBytes}</TableCell>
                     </TableRow>
                     <TableRow>
                       <TableCell>Created</TableCell>

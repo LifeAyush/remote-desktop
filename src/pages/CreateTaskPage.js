@@ -12,8 +12,8 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import TaskForm from '../components/TaskForm';
-import { fetchEcrImages, createTask } from '../utils/api';
-import { useToast } from '../contexts/ToastContext';
+import api from '../utils/api';
+import {toast} from 'react-toastify';
 
 const CreateTaskPage = () => {
   const [loading, setLoading] = useState(false);
@@ -21,7 +21,8 @@ const CreateTaskPage = () => {
   const [ecrImages, setEcrImages] = useState([]);
   const [activeStep, setActiveStep] = useState(0);
   const navigate = useNavigate();
-  const { showToast } = useToast();
+
+  const {getEcrImages, createTask} = api;
 
   // Step labels for the task creation process
   const steps = ['Select Image', 'Configure Task', 'Review & Create'];
@@ -31,30 +32,30 @@ const CreateTaskPage = () => {
     const loadEcrImages = async () => {
       try {
         setLoading(true);
-        const images = await fetchEcrImages();
+        const images = await getEcrImages();
         setEcrImages(images);
       } catch (error) {
         console.error('Failed to fetch ECR images:', error);
-        showToast('Failed to load ECR images', 'error');
+        toast.error('Failed to load ECR images');
       } finally {
         setLoading(false);
       }
     };
 
     loadEcrImages();
-  }, [showToast]);
+  }, [getEcrImages]);
 
   const handleSubmit = async (taskData) => {
     try {
       setSubmitting(true);
       // Send task creation request to API
       await createTask(taskData);
-      showToast('Task created successfully', 'success');
+      toast.success('Task created successfully');
       // Redirect to tasks page after successful creation
       navigate('/tasks');
     } catch (error) {
       console.error('Failed to create task:', error);
-      showToast('Failed to create task: ' + (error.message || 'Unknown error'), 'error');
+      toast.error('Failed to create task: ' + (error.message || 'Unknown error'));
     } finally {
       setSubmitting(false);
     }

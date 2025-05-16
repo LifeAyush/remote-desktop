@@ -1,8 +1,10 @@
+import React from 'react';
+
 /**
  * API utility for making REST API calls and WebSocket connections
  */
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+export const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 const WS_BASE_URL = process.env.REACT_APP_WS_BASE_URL || 'ws://localhost:8000';
 
 /**
@@ -95,47 +97,56 @@ export const usePolling = (fetchFunction, interval = 1000, isActive = true, maxP
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
   const [pollCount, setPollCount] = React.useState(0);
+  const [isPolling, setIsPolling] = React.useState(isActive);
+  const timerRef = React.useRef(null);
   
-  React.useEffect(() => {
-    let timerId = null;
-    
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const result = await fetchFunction();
-        setData(result);
-        setError(null);
-        setPollCount(prev => prev + 1);
-      } catch (err) {
-        setError(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    if (isActive && (!maxPolls || pollCount < maxPolls)) {
-      // Fetch initial data
+  const fetchData = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      const result = await fetchFunction();
+      setData(result);
+      setError(null);
+      setPollCount(prev => prev + 1);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchFunction]);
+
+  const stopPolling = React.useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setIsPolling(false);
+  }, []);
+
+  const startPolling = React.useCallback(() => {
+    if (!isPolling) {
+      setIsPolling(true);
       fetchData();
-      
-      // Setup polling interval
-      timerId = setInterval(() => {
+      timerRef.current = setInterval(() => {
         if (maxPolls && pollCount >= maxPolls - 1) {
-          clearInterval(timerId);
+          stopPolling();
         } else {
           fetchData();
         }
       }, interval);
     }
-    
-    // Cleanup
-    return () => {
-      if (timerId) {
-        clearInterval(timerId);
-      }
-    };
-  }, [fetchFunction, interval, isActive, maxPolls, pollCount]);
+  }, [fetchData, interval, isPolling, maxPolls, pollCount, stopPolling]);
   
-  return { data, loading, error, pollCount };
+  React.useEffect(() => {
+    if (isActive) {
+      startPolling();
+    }
+    
+    return () => {
+      stopPolling();
+    };
+  }, [isActive, startPolling, stopPolling]);
+  
+  return { data, loading, error, pollCount, startPolling, stopPolling };
 };
 
 // Sample response data for development/placeholder
