@@ -240,7 +240,11 @@ const MonitorPage = () => {
                       className="w-16 h-16 relative rounded-full flex items-center justify-center"
                       sx={{
                         background: `radial-gradient(#484848 55%, transparent 56%),
-                          conic-gradient(#1976d2 ${systemMetrics.cpu.total}deg, #e0e0e0 0deg)`,
+                          conic-gradient(
+                            #1976d2 0deg ${(systemMetrics.cpu.user / 100) * 360}deg,
+                            #4caf50 ${(systemMetrics.cpu.user / 100) * 360}deg ${((systemMetrics.cpu.user + systemMetrics.cpu.system) / 100) * 360}deg,
+                            #e0e0e0 ${((systemMetrics.cpu.user + systemMetrics.cpu.system) / 100) * 360}deg 360deg
+                          )`,
                       }}
                     >
                       <Typography variant="h7 text-white">
