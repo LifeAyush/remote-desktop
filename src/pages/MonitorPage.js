@@ -177,7 +177,7 @@ const MonitorPage = () => {
   };
 
   return (
-    <div className="p-6 h-full">
+    <div className="p-6 pb-6">
       <Box className="mb-6 flex justify-between items-center">
         <Typography variant="h4" component="h1">
           System Monitoring
@@ -221,35 +221,33 @@ const MonitorPage = () => {
       ) : (
         <>
           {/* System Overview Cards */}
-          <Grid container spacing={3} className="mb-6">
-            <Grid item xs={12} md={6}>
+          <Grid container spacing={3} className="mb-6 w-full">
+            <Grid item xs={12} md={8} sx={{ minWidth: 0, boxSizing: 'border-box', width: '420px' }}>
               <Card elevation={2} className="dark:bg-gray-800">
                 <CardHeader
                   title="CPU Usage"
                   action={
-                    <Tooltip title="Total CPU usage across all cores">
+                    <Tooltip title="CPU utilization across all cores">
                       <IconButton size="small">
                         <InfoIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
                   }
                 />
-                <CardContent>
+                <CardContent className="p-2">
                   <Box className="flex items-center mb-4">
                     <Box
-                      className="w-20 h-20 relative rounded-full flex items-center justify-center"
+                      className="w-16 h-16 relative rounded-full flex items-center justify-center"
                       sx={{
                         background: `radial-gradient(#484848 55%, transparent 56%),
-                          conic-gradient(#1976d2 ${
-                            systemMetrics.cpu.total * 3.6
-                          }deg, #e0e0e0 0deg)`,
+                          conic-gradient(#1976d2 ${systemMetrics.cpu.total}deg, #e0e0e0 0deg)`,
                       }}
                     >
-                      <Typography variant="h5">
+                      <Typography variant="h7 text-white">
                         {Math.round(systemMetrics.cpu.total)}%
                       </Typography>
                     </Box>
-                    <Box className="ml-6">
+                    <Box className="ml-4">
                       <Box className="flex items-center mb-1">
                         <Box className="w-4 h-4 rounded-sm bg-blue-500 mr-2" />
                         <Typography variant="body2">
@@ -270,13 +268,13 @@ const MonitorPage = () => {
                       </Box>
                     </Box>
                   </Box>
-                  <Divider className="mb-4" />
+                  <Divider className="mb-2" />
                   <CPUChart data={systemMetrics.cpu.history} />
                 </CardContent>
               </Card>
             </Grid>
 
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={4} sx={{ minWidth: 0, boxSizing: 'border-box', width: '420px' }}>
               <Card elevation={2} className="dark:bg-gray-800">
                 <CardHeader
                   title="Memory Usage"
@@ -288,10 +286,10 @@ const MonitorPage = () => {
                     </Tooltip>
                   }
                 />
-                <CardContent>
+                <CardContent className="p-2">
                   <Box className="flex items-center mb-4">
                     <Box
-                      className="w-20 h-20 relative rounded-full flex items-center justify-center"
+                      className="w-16 h-16 relative rounded-full flex items-center justify-center"
                       sx={{
                         background: `radial-gradient(#484848 55%, transparent 56%),
                           conic-gradient(#1976d2 ${
@@ -301,7 +299,7 @@ const MonitorPage = () => {
                           }deg, #e0e0e0 0deg)`,
                       }}
                     >
-                      <Typography variant="h5">
+                      <Typography variant="h7 text-white">
                         {Math.round(
                           (systemMetrics.memory.used /
                             systemMetrics.memory.total) *
@@ -310,7 +308,7 @@ const MonitorPage = () => {
                         %
                       </Typography>
                     </Box>
-                    <Box className="ml-6">
+                    <Box className="ml-4">
                       <Box className="flex items-center mb-1">
                         <Box className="w-4 h-4 rounded-sm bg-blue-500 mr-2" />
                         <Typography variant="body2">
@@ -331,7 +329,7 @@ const MonitorPage = () => {
                       </Box>
                     </Box>
                   </Box>
-                  <Divider className="mb-4" />
+                  <Divider className="mb-2" />
                   <MemoryChart data={systemMetrics.memory.history} />
                 </CardContent>
               </Card>

@@ -73,13 +73,6 @@ const CreateTaskPage = () => {
   return (
     <div className="p-6 h-full">
       <Box className="mb-6 flex items-center">
-        <Button 
-          startIcon={<ArrowBackIcon />} 
-          onClick={() => navigate('/tasks')}
-          className="mr-4"
-        >
-          Back to Tasks
-        </Button>
         <Typography variant="h4" component="h1">
           Create New Task
         </Typography>
