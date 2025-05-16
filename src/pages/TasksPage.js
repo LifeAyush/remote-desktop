@@ -21,9 +21,9 @@ import SearchIcon from '@mui/icons-material/Search';
 import ClearIcon from '@mui/icons-material/Clear';
 import TaskTable from '../components/TaskTable';
 import TaskLogsModal from '../components/TaskLogsModal';
-import { usePolling } from '../utils/usePolling';
-import { fetchContainers, startContainer, stopContainer, restartContainer, deleteContainer, fetchContainerLogs } from '../utils/api';
-import { useToast } from '../contexts/ToastContext';
+import { usePolling } from '../utils/api';
+import api from '../utils/api';
+import { toast } from 'react-toastify';
 
 const TasksPage = () => {
   const [tasks, setTasks] = useState([]);
@@ -31,8 +31,9 @@ const TasksPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [logsModal, setLogsModal] = useState({ open: false, taskId: null, taskName: null });
-  const { showToast } = useToast();
   const navigate = useNavigate();
+
+  const { fetchContainers, startContainer, stopContainer, restartContainer, deleteContainer, fetchContainerLogs } = api;
 
   // Fetch container data
   const loadContainers = async () => {
@@ -42,7 +43,7 @@ const TasksPage = () => {
       setTasks(data);
     } catch (error) {
       console.error('Failed to fetch containers:', error);
-      showToast('Failed to fetch containers', 'error');
+      toast.error('Failed to fetch containers');
     } finally {
       setLoading(false);
     }
@@ -72,33 +73,33 @@ const TasksPage = () => {
   const handleStartContainer = async (id) => {
     try {
       await startContainer(id);
-      showToast('Container started successfully', 'success');
+      toast.success('Container started successfully');
       loadContainers(); // Refresh container list
     } catch (error) {
       console.error('Failed to start container:', error);
-      showToast('Failed to start container', 'error');
+      toast.error('Failed to start container');
     }
   };
 
   const handleStopContainer = async (id) => {
     try {
       await stopContainer(id);
-      showToast('Container stopped successfully', 'success');
+      toast.success('Container stopped successfully');
       loadContainers(); // Refresh container list
     } catch (error) {
       console.error('Failed to stop container:', error);
-      showToast('Failed to stop container', 'error');
+      toast.error('Failed to stop container');
     }
   };
 
   const handleRestartContainer = async (id) => {
     try {
       await restartContainer(id);
-      showToast('Container restarted successfully', 'success');
+      toast.success('Container restarted successfully');
       loadContainers(); // Refresh container list
     } catch (error) {
       console.error('Failed to restart container:', error);
-      showToast('Failed to restart container', 'error');
+      toast.error('Failed to restart container');
     }
   };
 
@@ -106,11 +107,11 @@ const TasksPage = () => {
     // TODO: add a confirmation dialog here
     try {
       await deleteContainer(id);
-      showToast('Container deleted successfully', 'success');
+      toast.success('Container deleted successfully');
       loadContainers(); // Refresh container list
     } catch (error) {
       console.error('Failed to delete container:', error);
-      showToast('Failed to delete container', 'error');
+      toast.error('Failed to delete container');
     }
   };
 

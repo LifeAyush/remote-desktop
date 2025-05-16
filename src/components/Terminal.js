@@ -6,7 +6,7 @@ import { WebLinksAddon } from "xterm-addon-web-links";
 import "xterm/css/xterm.css";
 import { createWebSocket } from "../utils/api";
 
-const Terminal = ({ sessionId, height = "400px" }) => {
+const Terminal = ({ sessionId, height = "100%" }) => {
   const terminalRef = useRef(null);
   const xtermRef = useRef(null);
   const wsRef = useRef(null);
@@ -219,7 +219,7 @@ app.conf
   };
 
   return (
-    <div className="terminal-container" style={{ height, width: "100%" }}>
+    <div className="terminal-container" style={{ height: "100%", width: "100%" }}>
       <div ref={terminalRef} style={{ height: "100%", width: "100%" }} />
     </div>
   );
