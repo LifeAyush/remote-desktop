@@ -10,7 +10,6 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  InputAdornment,
   Divider,
   Chip,
   IconButton,
