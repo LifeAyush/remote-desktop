@@ -52,13 +52,13 @@ const TasksPage = () => {
   // Setup polling to refresh container data
   const { startPolling, stopPolling } = usePolling(loadContainers, 5000);
 
-  useEffect(() => {
-    loadContainers();
-    startPolling();
+  // useEffect(() => {
+  //   loadContainers();
+  //   startPolling();
     
-    return () => stopPolling();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  //   return () => stopPolling();
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, []);
 
   // Handle container actions
   const handleViewLogs = (id) => {
@@ -201,6 +201,11 @@ const TasksPage = () => {
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 label="Status"
+                sx={{
+                  '& .MuiSelect-select': {
+                    width: '140px'
+                  }
+                }}
               >
                 <MenuItem value="all">All Statuses</MenuItem>
                 <MenuItem value="running">Running</MenuItem>

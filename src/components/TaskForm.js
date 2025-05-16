@@ -70,12 +70,12 @@ const TaskForm = ({ ecrImages, onSubmit, submitting, activeStep, onNextStep, onP
               <em>Select an image</em>
             </MenuItem>
             {ecrImages.map((image) => (
-              <MenuItem key={image.uri} value={image.uri}>
+              <MenuItem key={image.imageDigest} value={image.imageDigest}>
                 <Box className="flex items-center justify-between w-full">
-                  <span>{image.name}</span>
+                  <span>{image.imageTags[0] || 'untagged'}</span>
                   <Chip 
                     size="small" 
-                    label={image.tag || 'latest'} 
+                    label={`${image.imageSizeMB.toFixed(2)} MB`} 
                     color="primary" 
                     variant="outlined"
                     className="ml-2"
@@ -96,23 +96,23 @@ const TaskForm = ({ ecrImages, onSubmit, submitting, activeStep, onNextStep, onP
                 </TableRow>
               </TableHead>
               <TableBody>
-                {ecrImages.filter(img => img.uri === formData.image).map((selectedImage) => (
-                  <React.Fragment key={selectedImage.uri}>
+                {ecrImages.filter(img => img.imageDigest === formData.image).map((selectedImage) => (
+                  <React.Fragment key={selectedImage.imageDigest}>
                     <TableRow>
-                      <TableCell>Repository</TableCell>
-                      <TableCell>{selectedImage.repository}</TableCell>
+                      <TableCell>Image Digest</TableCell>
+                      <TableCell>{selectedImage.imageDigest}</TableCell>
                     </TableRow>
                     <TableRow>
-                      <TableCell>Tag</TableCell>
-                      <TableCell>{selectedImage.tag || 'latest'}</TableCell>
+                      <TableCell>Tags</TableCell>
+                      <TableCell>{selectedImage.imageTags.join(', ') || 'untagged'}</TableCell>
                     </TableRow>
                     <TableRow>
                       <TableCell>Size</TableCell>
-                      <TableCell>{selectedImage.sizeInBytes}</TableCell>
+                      <TableCell>{selectedImage.imageSizeMB.toFixed(2)} MB</TableCell>
                     </TableRow>
                     <TableRow>
-                      <TableCell>Created</TableCell>
-                      <TableCell>{formatDistanceToNow(new Date(selectedImage.createdAt), { addSuffix: true })}</TableCell>
+                      <TableCell>Pushed At</TableCell>
+                      <TableCell>{formatDistanceToNow(new Date(selectedImage.pushedAt), { addSuffix: true })}</TableCell>
                     </TableRow>
                   </React.Fragment>
                 ))}
@@ -161,6 +161,17 @@ const TaskForm = ({ ecrImages, onSubmit, submitting, activeStep, onNextStep, onP
                 { value: 4, label: '4' }
               ]}
               valueLabelDisplay="auto"
+              sx={{
+                '& .MuiSlider-valueLabel': {
+                  top: 38,
+                  transform: 'translateY(-50%) scale(1)',
+                  background: 'white',
+                  color: 'black',
+                  border: '1px solid #1976d2',
+                  boxShadow: '0 2px 8px rgba(25, 118, 210, 0.15)',
+                  fontWeight: 600
+                }
+              }}
             />
           </Grid>
           <Grid item xs={6}>
@@ -180,6 +191,17 @@ const TaskForm = ({ ecrImages, onSubmit, submitting, activeStep, onNextStep, onP
                 { value: 8192, label: '8GB' }
               ]}
               valueLabelDisplay="auto"
+              sx={{
+                '& .MuiSlider-valueLabel': {
+                  top: 38,
+                  transform: 'translateY(-50%) scale(1)',
+                  background: 'white',
+                  color: 'black',
+                  border: '1px solid #1976d2',
+                  boxShadow: '0 2px 8px rgba(25, 118, 210, 0.15)',
+                  fontWeight: 600
+                }
+              }}
             />
           </Grid>
         </Grid>
@@ -385,7 +407,7 @@ const TaskForm = ({ ecrImages, onSubmit, submitting, activeStep, onNextStep, onP
 
   // Review and submit step content
   const renderReviewStep = () => {
-    const selectedImage = ecrImages.find(img => img.uri === formData.image) || {};
+    const selectedImage = ecrImages.find(img => img.imageDigest === formData.image) || {};
     
     return (
       <Box>
@@ -403,16 +425,7 @@ const TaskForm = ({ ecrImages, onSubmit, submitting, activeStep, onNextStep, onP
               <TableRow>
                 <TableCell variant="head">Image</TableCell>
                 <TableCell>
-                  {selectedImage.name}
-                  {selectedImage.tag && (
-                    <Chip 
-                      size="small" 
-                      label={selectedImage.tag} 
-                      color="primary" 
-                      variant="outlined"
-                      className="ml-2"
-                    />
-                  )}
+                  {selectedImage.imageTags[0] || 'untagged'}
                 </TableCell>
               </TableRow>
               <TableRow>

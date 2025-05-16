@@ -20,7 +20,7 @@ const Header = () => {
   };
 
   return (
-    <header className="bg-white dark:bg-gray-800 shadow-sm z-10">
+    <header className="bg-white dark:bg-gray-800 shadow-sm z-10 h-16">
       <div className="flex justify-between items-center px-6 py-4">
         <h1 className="text-xl font-semibold text-gray-800 dark:text-white">
           {getPageTitle()}

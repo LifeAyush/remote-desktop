@@ -4,15 +4,17 @@ import { Terminal as XTerm } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import { WebLinksAddon } from "xterm-addon-web-links";
 import "xterm/css/xterm.css";
-import { createWebSocket } from "../utils/api";
+import { API_BASE_URL } from "../utils/api";
 
-const Terminal = ({ sessionId, height = "100%" }) => {
+const Terminal = ({ socketUrl, height = "100%" }) => {
   const terminalRef = useRef(null);
   const xtermRef = useRef(null);
+  const fitAddonRef = useRef(null);
   const wsRef = useRef(null);
 
   // Initialize terminal
   useEffect(() => {
+    // Wait for DOM to be ready
     if (!terminalRef.current) return;
 
     // Create terminal instance
@@ -44,10 +46,12 @@ const Terminal = ({ sessionId, height = "100%" }) => {
       cursorBlink: true,
       cursorStyle: "block",
       scrollback: 1000,
+      allowTransparency: true,
     });
 
     // Add fit addon to resize terminal to container
     const fitAddon = new FitAddon();
+    fitAddonRef.current = fitAddon;
     xtermRef.current.loadAddon(fitAddon);
 
     // Add web links addon for clickable URLs
@@ -56,11 +60,21 @@ const Terminal = ({ sessionId, height = "100%" }) => {
 
     // Open terminal in the container
     xtermRef.current.open(terminalRef.current);
-    fitAddon.fit();
+    
+    // Wait a moment before fitting to ensure DOM is ready
+    setTimeout(() => {
+      try {
+        if (fitAddonRef.current) {
+          fitAddonRef.current.fit();
+        }
+      } catch (e) {
+        console.error("Error fitting terminal:", e);
+      }
+    }, 100);
 
     // Add welcome message
     xtermRef.current.writeln(
-      "\x1B[1;34m=== Remote Desktop SSH Terminal ===\x1B[0m"
+      "\x1B[1;34m=== Remote Desktop Terminal ===\x1B[0m"
     );
     xtermRef.current.writeln(
       "Type commands to interact with the remote server."
@@ -69,22 +83,83 @@ const Terminal = ({ sessionId, height = "100%" }) => {
     xtermRef.current.write("$ ");
 
     // Setup WebSocket connection
-    setupWebSocket();
+    const wsUrl = `ws://localhost:8000/ws/client`;
+    console.log("Connecting to WebSocket:", wsUrl);
+    
+    try {
+      wsRef.current = new WebSocket(wsUrl);
+
+      wsRef.current.onopen = () => {
+        console.log("WebSocket connection opened");
+        if (xtermRef.current) {
+          xtermRef.current.writeln(
+            "\r\n\x1B[1;32mConnected to terminal server!\x1B[0m"
+          );
+          xtermRef.current.write("$ ");
+        }
+      };
+
+      wsRef.current.onmessage = (event) => {
+        console.log("Received message:", event.data);
+        if (xtermRef.current) {
+          xtermRef.current.write(event.data);
+        }
+      };
+
+      wsRef.current.onclose = (event) => {
+        console.log("WebSocket connection closed:", event.code, event.reason);
+        if (xtermRef.current) {
+          xtermRef.current.writeln(
+            "\r\n\x1B[1;31mDisconnected from terminal server\x1B[0m"
+          );
+          xtermRef.current.writeln("Reconnecting in 3 seconds...");
+        }
+        
+        // Attempt to reconnect after a delay
+        setTimeout(() => {
+          console.log("Attempting to reconnect...");
+          if (wsRef.current) {
+            wsRef.current = new WebSocket(wsUrl);
+          }
+        }, 3000);
+      };
+
+      wsRef.current.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        if (xtermRef.current) {
+          xtermRef.current.writeln(
+            "\r\n\x1B[1;31mError connecting to terminal server\x1B[0m"
+          );
+        }
+      };
+    } catch (e) {
+      console.error("Error creating WebSocket connection:", e);
+      if (xtermRef.current) {
+        xtermRef.current.writeln(
+          "\r\n\x1B[1;31mFailed to connect to terminal server\x1B[0m"
+        );
+      }
+    }
 
     // Handle resizing
     const handleResize = () => {
-      if (fitAddon) {
-        fitAddon.fit();
-
-        // Send terminal size to server if WebSocket is connected
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(
-            JSON.stringify({
-              type: "resize",
+      if (fitAddonRef.current && xtermRef.current) {
+        try {
+          fitAddonRef.current.fit();
+          
+          // Send terminal dimensions to server
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            const dimensions = {
               cols: xtermRef.current.cols,
-              rows: xtermRef.current.rows,
-            })
-          );
+              rows: xtermRef.current.rows
+            };
+            wsRef.current.send(JSON.stringify({
+              type: 'resize',
+              dimensions
+            }));
+          }
+        } catch (e) {
+          console.error("Error resizing terminal:", e);
         }
       }
     };
@@ -93,140 +168,37 @@ const Terminal = ({ sessionId, height = "100%" }) => {
 
     // Function to handle user input
     xtermRef.current.onData((data) => {
+      // Don't echo locally - let the server echo back
+      // Send the data to the server
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(
-          JSON.stringify({
-            type: "input",
-            data: data,
-          })
-        );
-      } else {
-        // Echo locally if not connected
-        xtermRef.current.write(data);
+        wsRef.current.send(JSON.stringify({
+          type: 'input',
+          data
+        }));
       }
     });
 
     // Cleanup
     return () => {
       window.removeEventListener("resize", handleResize);
-
       if (wsRef.current) {
         wsRef.current.close();
       }
-
       if (xtermRef.current) {
         xtermRef.current.dispose();
       }
     };
-  }, []);
-
-  // Setup WebSocket connection
-  const setupWebSocket = () => {
-    if (!sessionId) {
-      console.warn("No session ID provided for terminal");
-      return;
-    }
-
-    try {
-      wsRef.current = createWebSocket(`/terminal/${sessionId}`, {
-        onOpen: () => {
-          // Connected to server
-          if (xtermRef.current) {
-            xtermRef.current.writeln(
-              "\r\n\x1B[1;32mConnected to terminal server!\x1B[0m"
-            );
-            xtermRef.current.write("$ ");
-
-            // Send terminal size
-            wsRef.current.send(
-              JSON.stringify({
-                type: "resize",
-                cols: xtermRef.current.cols,
-                rows: xtermRef.current.rows,
-              })
-            );
-          }
-        },
-        onMessage: (event) => {
-          try {
-            const message = JSON.parse(event.data);
-
-            if (message.type === "output" && xtermRef.current) {
-              xtermRef.current.write(message.data);
-            }
-          } catch (error) {
-            // Handle raw text data
-            if (xtermRef.current) {
-              xtermRef.current.write(event.data);
-            }
-          }
-        },
-        onClose: () => {
-          if (xtermRef.current) {
-            xtermRef.current.writeln(
-              "\r\n\x1B[1;31mDisconnected from terminal server\x1B[0m"
-            );
-            xtermRef.current.writeln("Reconnecting in 3 seconds...");
-          }
-
-          // Attempt to reconnect after a delay
-          setTimeout(() => {
-            setupWebSocket();
-          }, 3000);
-        },
-        onError: (error) => {
-          console.error("Terminal WebSocket error:", error);
-          if (xtermRef.current) {
-            xtermRef.current.writeln(
-              "\r\n\x1B[1;31mError connecting to terminal server\x1B[0m"
-            );
-          }
-        },
-      });
-    } catch (error) {
-      console.error("Failed to create terminal WebSocket:", error);
-    }
-  };
-
-  // Placeholder for actual WebSocket implementation
-  const simulateTerminalCommand = (command) => {
-    // Simulate response for testing
-    if (command.trim() === "ls") {
-      return `file1.txt
-file2.txt
-folder1/
-folder2/
-app.conf
-`;
-    } else if (command.trim() === "ps") {
-      return `  PID TTY          TIME CMD
- 1234 pts/0    00:00:01 bash
- 5678 pts/0    00:00:00 ps
- 9012 pts/1    00:02:34 node
-`;
-    } else if (command.trim() === "help") {
-      return `Available commands:
-  ls    - List files
-  ps    - List processes
-  clear - Clear screen
-  help  - Show this help
-`;
-    } else if (command.trim() === "clear") {
-      return "\x1Bc";
-    } else {
-      return `Command not found: ${command}\r\n`;
-    }
-  };
+  }, [socketUrl]);
 
   return (
-    <div className="terminal-container" style={{ height: "100%", width: "100%" }}>
-      <div ref={terminalRef} style={{ height: "100%", width: "100%" }} />
+    <div className="terminal-container" style={{ height, width: "100%", position: "relative", overflow: "hidden" }}>
+      <div ref={terminalRef} style={{ height: "100%", width: "100%", position: "absolute", top: 0, left: 0 }} />
     </div>
   );
 };
 
 Terminal.propTypes = {
-  sessionId: PropTypes.string.isRequired,
+  socketUrl: PropTypes.string,
   height: PropTypes.string,
 };
 

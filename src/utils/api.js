@@ -5,29 +5,29 @@ import React from 'react';
  */
 
 export const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
-const WS_BASE_URL = process.env.REACT_APP_WS_BASE_URL || 'ws://localhost:8000';
+const WS_BASE_URL = process.env.REACT_APP_WS_BASE_URL || 'http://localhost:8000/ws';
 
 /**
  * Make a REST API request
  * @param {string} endpoint - API endpoint
- * @param {Object} options - Fetch options
+ * @param {string} method - HTTP method (GET or POST)
+ * @param {Object} body - Request body for POST requests
  * @returns {Promise} - Response promise
  */
-const apiRequest = async (endpoint, options = {}) => {
+const apiRequest = async (endpoint, method = 'GET', body = null) => {
   try {
     const url = `${API_BASE_URL}${endpoint}`;
     
-    const defaultHeaders = {
-      'Content-Type': 'application/json',
-    };
-    
     const config = {
-      ...options,
+      method,
       headers: {
-        ...defaultHeaders,
-        ...options.headers,
+        'Content-Type': 'application/json',
       },
     };
+
+    if (method === 'POST' && body) {
+      config.body = JSON.stringify(body);
+    }
     
     const response = await fetch(url, config);
     
@@ -65,16 +65,13 @@ const api = {
   getTaskLogs: (taskId) => apiRequest(`/api/tasks/${taskId}/logs`),
   
   // Task actions
-  stopTask: (taskId) => apiRequest(`/api/tasks/${taskId}/stop`, { method: 'POST' }),
-  restartTask: (taskId) => apiRequest(`/api/tasks/${taskId}/restart`, { method: 'POST' }),
-  killTask: (taskId) => apiRequest(`/api/tasks/${taskId}/kill`, { method: 'POST' }),
+  stopTask: (taskId) => apiRequest(`/api/tasks/${taskId}/stop`, 'POST'),
+  restartTask: (taskId) => apiRequest(`/api/tasks/${taskId}/restart`, 'POST'),
+  killTask: (taskId) => apiRequest(`/api/tasks/${taskId}/kill`, 'POST'),
   
   // ECR Tasks
-  getEcrImages: () => apiRequest('/api/ecr/images'),
-  createTask: (taskDefinition) => apiRequest('/api/tasks', {
-    method: 'POST',
-    body: JSON.stringify(taskDefinition),
-  }),
+  getEcrImages: () => apiRequest('/ecr/images/dev-test'),
+  createTask: (taskDefinition) => apiRequest('/api/tasks', 'POST', taskDefinition),
 };
 
 /**
@@ -84,8 +81,7 @@ const api = {
  * @returns {WebSocket} - WebSocket connection
  */
 export const createWebSocket = (endpoint, handlers = {}) => {
-  const url = `${WS_BASE_URL}${endpoint}`;
-  const ws = new WebSocket(url);
+  const ws = new WebSocket(WS_BASE_URL);
   
   // Setup default handlers
   ws.onopen = handlers.onOpen || (() => console.log('WebSocket connected'));
@@ -302,13 +298,14 @@ export const sampleData = {
     created_at: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
   })),
   taskLogs: "Starting container...\nInitializing runtime...\nConnecting to network...\nService ready.\nReceived HTTP request...\nProcessing data...\nOperation completed successfully.",
-  ecrImages: Array(12).fill().map((_, i) => ({
-    repositoryName: `repo-${Math.floor(i/3) + 1}`,
-    imageName: `image-${i + 1}`,
-    tag: ['latest', 'stable', 'dev', 'v1.0'][i % 4],
-    size: Math.floor(Math.random() * 1000) + 100,
-    createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString()
-  }))
+  ecrImages: [
+    {
+      imageDigest: "sha256:8bd5e5d8378fbf87291aeaffb9a5e96bc52ef3460d15030ce0e522010898a3a9",
+      imageTags: ["1"],
+      imageSizeMB: 363.13,
+      pushedAt: "2025-05-16T15:46:55.663000+05:30"
+    }
+  ]
 };
 
 export default api;

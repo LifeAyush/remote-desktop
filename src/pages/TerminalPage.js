@@ -21,12 +21,11 @@ const TerminalPage = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [customEndpoint, setCustomEndpoint] = useState('');
+  const [terminalKey, setTerminalKey] = useState(Date.now()); // For forcing terminal reconnection
 
   // Example server list - this would come from your API in a real implementation
   const servers = [
-    { id: 'server1', name: 'Production Server', host: 'prod-server' },
-    { id: 'server2', name: 'Staging Server', host: 'staging-server' },
-    { id: 'server3', name: 'Development Server', host: 'dev-server' },
+    { id: 'server1', name: 'Production Server', host: 'prod-server' }
   ];
 
   const handleConnect = () => {
@@ -40,21 +39,38 @@ const TerminalPage = () => {
     setServer('');
   };
 
+  const handleRefresh = () => {
+    // Force terminal to reconnect by changing its key
+    setTerminalKey(Date.now());
+  };
+
   const getWebSocketUrl = () => {
-    // Use custom endpoint if provided, otherwise use the selected server
+    // Use custom endpoint if provided, otherwise construct from API base and server
     if (customEndpoint) {
-      // Make sure it starts with ws:// or wss://
-      if (!customEndpoint.startsWith('ws://') && !customEndpoint.startsWith('wss://')) {
-        return `ws://${customEndpoint}/ssh`;
+      return customEndpoint;
+    }
+
+    // Add ws:// or wss:// prefix if needed
+    let url = `${API_BASE_URL}/ws`;
+    
+    // Add server details if available
+    if (server) {
+      const selectedServer = servers.find(s => s.id === server);
+      if (selectedServer) {
+        url += `/terminal/${selectedServer.host}`;
       }
-      return `${customEndpoint}/ssh`;
     }
     
-    // Convert HTTP/HTTPS to WS/WSS
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const selectedServer = servers.find(s => s.id === server);
+    // Ensure WebSocket protocol is used
+    if (url.startsWith('http://')) {
+      url = url.replace('http://', 'ws://');
+    } else if (url.startsWith('https://')) {
+      url = url.replace('https://', 'wss://');
+    } else if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
+      url = `ws://${url}`;
+    }
     
-    return `${wsProtocol}//${API_BASE_URL.replace(/^https?:\/\//, '')}/ssh/${selectedServer?.host || 'default'}`;
+    return url;
   };
 
   return (
@@ -103,6 +119,11 @@ const TerminalPage = () => {
                 value={server}
                 onChange={(e) => setServer(e.target.value)}
                 label="Select Server"
+                sx={{
+                  '& .MuiSelect-select': {
+                    width: '140px'
+                  }
+                }}
               >
                 {servers.map((server) => (
                   <MenuItem key={server.id} value={server.id}>
@@ -116,6 +137,14 @@ const TerminalPage = () => {
               color="primary" 
               onClick={handleConnect}
               disabled={!server && !customEndpoint}
+              sx={{
+                height: '55px',
+                '&.Mui-disabled': {
+                  color: 'rgba(0, 0, 0, 0.26)',
+                  boxShadow: 'none',
+                  backgroundColor: 'rgba(0, 0, 0, 0.12)'
+                }
+              }}
             >
               Connect
             </Button>
@@ -128,7 +157,7 @@ const TerminalPage = () => {
               `Connected to: ${servers.find(s => s.id === server)?.name || 'Custom Server'}`}
           </Typography>
           <Box>
-            <IconButton color="primary" className="mr-2">
+            <IconButton color="primary" className="mr-2" onClick={handleRefresh}>
               <RefreshIcon />
             </IconButton>
             <Button variant="outlined" color="secondary" onClick={handleDisconnect}>
@@ -144,7 +173,10 @@ const TerminalPage = () => {
         sx={{ display: 'flex', flexDirection: 'column' }}
       >
         {isConnected ? (
-          <Terminal socketUrl={getWebSocketUrl()} />
+          <Terminal 
+            key={terminalKey}
+            socketUrl={getWebSocketUrl()} 
+          />
         ) : (
           <Box className="flex items-center justify-center h-full">
             <Typography variant="body1" color="textSecondary">
