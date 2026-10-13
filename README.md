@@ -2,6 +2,8 @@
 
 A full-featured Remote Desktop Controller frontend built with **React**, **Tailwind CSS**, and **Material UI (MUI)**. This app integrates seamlessly with a FastAPI backend using a mix of REST APIs and WebSockets. It provides real-time system monitoring, container task management, SSH terminal access, and task creation via ECR-style definitions.
 
+This repository is the web client. The FastAPI backend is not in this repo.
+
 ---
 
 ## 🚀 Features
@@ -70,8 +72,8 @@ A full-featured Remote Desktop Controller frontend built with **React**, **Tailw
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/yourusername/remote-desktop-controller.git
-cd remote-desktop-controller
+git clone https://github.com/LifeAyush/remote-desktop
+cd remote-desktop
 ```
 
 2. **Install dependencies**
