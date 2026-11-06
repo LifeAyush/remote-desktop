@@ -1,10 +1,6 @@
 module.exports = {
-  content: [
-    "./src/**/*.{js,jsx,ts,tsx}", // Ensures Tailwind scans all your React files
-  ],
-  theme: {
-    extend: {},
-  },
-  plugins: [
-  ],
-}
+  content: ['./src/**/*.{js,jsx,ts,tsx}'],
+  darkMode: 'class',
+  theme: { extend: {} },
+  plugins: [],
+};

@@ -1,340 +1,196 @@
-import React, { useState, useContext } from "react";
-import PropTypes from "prop-types";
+import React, { useMemo, useState } from 'react';
+import PropTypes from 'prop-types';
 import {
+  Box,
+  Chip,
+  CircularProgress,
+  IconButton,
+  LinearProgress,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   TableSortLabel,
-  Button,
-  Chip,
-  Box,
-  IconButton,
   Tooltip,
-  CircularProgress,
-} from "@mui/material";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import StopIcon from "@mui/icons-material/Stop";
-import RestartAltIcon from "@mui/icons-material/RestartAlt";
-import DeleteIcon from "@mui/icons-material/Delete";
-import VisibilityIcon from "@mui/icons-material/Visibility";
-import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
-import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
-import ThemeContext from "../contexts/ThemeContext";
+} from '@mui/material';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import StopIcon from '@mui/icons-material/Stop';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import DeleteIcon from '@mui/icons-material/Delete';
+import ArticleIcon from '@mui/icons-material/Article';
+import TerminalIcon from '@mui/icons-material/Terminal';
+import BoltIcon from '@mui/icons-material/Bolt';
+import LockIcon from '@mui/icons-material/Lock';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import { formatBytes, formatUptime, percent } from '../utils/format';
 
-const TaskTable = ({
-  tasks = [],
-  loading = false,
-  onViewLogs,
-  onStop,
-  onStart,
-  onRestart,
-  onDelete,
-}) => {
-  const [orderBy, setOrderBy] = useState("name");
-  const [order, setOrder] = useState("asc");
-  const [expandedRow, setExpandedRow] = useState(null);
-  const { darkMode } = useContext(ThemeContext);
+const statusColor = (status) =>
+  ({ running: 'success', exited: 'default', dead: 'error', created: 'info', paused: 'warning', restarting: 'warning' })[status] ||
+  'default';
 
-  const handleRequestSort = (property) => {
-    const isAsc = orderBy === property && order === "asc";
-    setOrder(isAsc ? "desc" : "asc");
-    setOrderBy(property);
-  };
+const columns = [
+  { id: 'name', label: 'Name' },
+  { id: 'image', label: 'Image' },
+  { id: 'status', label: 'Status' },
+  { id: 'uptime', label: 'Uptime', numeric: true },
+  { id: 'cpu', label: 'CPU %', numeric: true },
+  { id: 'memory', label: 'Memory', numeric: true },
+];
 
-  const handleExpandClick = (id) => {
-    setExpandedRow(expandedRow === id ? null : id);
-  };
+const Action = ({ title, onClick, color, disabled, children }) => (
+  <Tooltip title={title}>
+    <span>
+      <IconButton size="small" onClick={onClick} color={color} disabled={disabled} aria-label={title}>
+        {children}
+      </IconButton>
+    </span>
+  </Tooltip>
+);
 
-  const getStatusColor = (status) => {
-    const statusLower = status.toLowerCase();
-    if (statusLower.includes("running")) return "success";
-    if (statusLower.includes("exited") || statusLower.includes("dead"))
-      return "error";
-    if (statusLower.includes("created")) return "info";
-    if (statusLower.includes("paused")) return "warning";
-    return "default";
-  };
+const TaskTable = ({ tasks, loading, busyId, onAction, onViewLogs, onOpenTerminal }) => {
+  const [sort, setSort] = useState({ by: 'name', dir: 'asc' });
+  const [expanded, setExpanded] = useState(null);
 
-  // Format uptime from seconds to human-readable format
-  const formatUptime = (uptime) => {
-    if (uptime < 60) return `${uptime}s`;
-    if (uptime < 3600) return `${Math.floor(uptime / 60)}m ${uptime % 60}s`;
-    if (uptime < 86400)
-      return `${Math.floor(uptime / 3600)}h ${Math.floor(
-        (uptime % 3600) / 60
-      )}m`;
-    return `${Math.floor(uptime / 86400)}d ${Math.floor(
-      (uptime % 86400) / 3600
-    )}h`;
-  };
+  const sorted = useMemo(() => {
+    const dir = sort.dir === 'asc' ? 1 : -1;
+    return [...tasks].sort((a, b) => {
+      const x = a[sort.by];
+      const y = b[sort.by];
+      return (typeof x === 'string' ? x.localeCompare(y) : x - y) * dir;
+    });
+  }, [tasks, sort]);
 
-  // Format memory usage
-  const formatMemory = (bytes) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-    if (bytes < 1024 * 1024 * 1024)
-      return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  };
-
-  // Sort function
-  const sortedTasks = tasks.sort((a, b) => {
-    let valueA = a[orderBy];
-    let valueB = b[orderBy];
-
-    // Special case for status
-    if (orderBy === "status") {
-      valueA = a.status.toLowerCase();
-      valueB = b.status.toLowerCase();
-    }
-
-    // Special case for memory
-    if (orderBy === "memory") {
-      valueA = parseInt(a.memory, 10);
-      valueB = parseInt(b.memory, 10);
-    }
-
-    // Handle string comparison
-    if (typeof valueA === "string" && typeof valueB === "string") {
-      return order === "asc"
-        ? valueA.localeCompare(valueB)
-        : valueB.localeCompare(valueA);
-    }
-
-    // Handle numeric comparison
-    return order === "asc" ? valueA - valueB : valueB - valueA;
-  });
+  const toggleSort = (by) => setSort((s) => ({ by, dir: s.by === by && s.dir === 'asc' ? 'desc' : 'asc' }));
 
   return (
-    <TableContainer component={Paper} className="dark:bg-gray-800">
-      <Table sx={{ minWidth: 650 }} aria-label="task table">
+    <TableContainer>
+      <Table size="small" sx={{ minWidth: 900 }}>
         <TableHead>
           <TableRow>
-            <TableCell padding="checkbox"></TableCell>
-            <TableCell>
-              <TableSortLabel
-                active={orderBy === "name"}
-                direction={orderBy === "name" ? order : "asc"}
-                onClick={() => handleRequestSort("name")}
-              >
-                Name
-              </TableSortLabel>
-            </TableCell>
-            <TableCell>
-              <TableSortLabel
-                active={orderBy === "image"}
-                direction={orderBy === "image" ? order : "asc"}
-                onClick={() => handleRequestSort("image")}
-              >
-                Image
-              </TableSortLabel>
-            </TableCell>
-            <TableCell>
-              <TableSortLabel
-                active={orderBy === "status"}
-                direction={orderBy === "status" ? order : "asc"}
-                onClick={() => handleRequestSort("status")}
-              >
-                Status
-              </TableSortLabel>
-            </TableCell>
-            <TableCell>
-              <TableSortLabel
-                active={orderBy === "uptime"}
-                direction={orderBy === "uptime" ? order : "asc"}
-                onClick={() => handleRequestSort("uptime")}
-              >
-                Uptime
-              </TableSortLabel>
-            </TableCell>
-            <TableCell>
-              <TableSortLabel
-                active={orderBy === "cpu"}
-                direction={orderBy === "cpu" ? order : "asc"}
-                onClick={() => handleRequestSort("cpu")}
-              >
-                CPU %
-              </TableSortLabel>
-            </TableCell>
-            <TableCell>
-              <TableSortLabel
-                active={orderBy === "memory"}
-                direction={orderBy === "memory" ? order : "asc"}
-                onClick={() => handleRequestSort("memory")}
-              >
-                Memory
-              </TableSortLabel>
-            </TableCell>
+            <TableCell padding="checkbox" />
+            {columns.map((c) => (
+              <TableCell key={c.id} align={c.numeric ? 'right' : 'left'}>
+                <TableSortLabel active={sort.by === c.id} direction={sort.by === c.id ? sort.dir : 'asc'} onClick={() => toggleSort(c.id)}>
+                  {c.label}
+                </TableSortLabel>
+              </TableCell>
+            ))}
             <TableCell align="right">Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {loading ? (
+          {loading && !tasks.length ? (
             <TableRow>
               <TableCell colSpan={8} align="center" className="py-8">
-                <CircularProgress />
+                <CircularProgress size={28} />
               </TableCell>
             </TableRow>
-          ) : tasks.length === 0 ? (
+          ) : !tasks.length ? (
             <TableRow>
               <TableCell colSpan={8} align="center" className="py-8">
-                No containers found
+                No containers match
               </TableCell>
             </TableRow>
           ) : (
-            sortedTasks.map((task) => (
-              <React.Fragment key={task.id}>
-                <TableRow
-                  hover
-                  className={`${
-                    darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"
-                  }`}
-                >
-                  <TableCell padding="checkbox">
-                    <IconButton
-                      aria-label="expand row"
-                      size="small"
-                      onClick={() => handleExpandClick(task.id)}
-                    >
-                      {expandedRow === task.id ? (
-                        <KeyboardArrowUpIcon />
-                      ) : (
-                        <KeyboardArrowDownIcon />
-                      )}
-                    </IconButton>
-                  </TableCell>
-                  <TableCell component="th" scope="row">
-                    {task.name}
-                  </TableCell>
-                  <TableCell>{task.image}</TableCell>
-                  <TableCell>
-                    <Chip
-                      label={task.status}
-                      color={getStatusColor(task.status)}
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell>{formatUptime(task.uptime)}</TableCell>
-                  <TableCell>{task.cpu.toFixed(2)}%</TableCell>
-                  <TableCell>{formatMemory(task.memory)}</TableCell>
-                  <TableCell align="right">
-                    <Box className="flex justify-end gap-1">
-                      <Tooltip title="View Logs">
-                        <IconButton
-                          size="small"
-                          onClick={() => onViewLogs(task.id)}
-                          color="primary"
-                        >
-                          <VisibilityIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-
-                      {task.status.toLowerCase().includes("running") ? (
-                        <Tooltip title="Stop">
-                          <IconButton
-                            size="small"
-                            onClick={() => onStop(task.id)}
-                            color="error"
-                          >
-                            <StopIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      ) : (
-                        <Tooltip title="Start">
-                          <IconButton
-                            size="small"
-                            onClick={() => onStart(task.id)}
-                            color="success"
-                          >
-                            <PlayArrowIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-
-                      <Tooltip title="Restart">
-                        <IconButton
-                          size="small"
-                          onClick={() => onRestart(task.id)}
-                          color="warning"
-                        >
-                          <RestartAltIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-
-                      <Tooltip title="Delete">
-                        <IconButton
-                          size="small"
-                          onClick={() => onDelete(task.id)}
-                          color="error"
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </TableCell>
-                </TableRow>
-
-                {/* Expanded row with details */}
-                {expandedRow === task.id && (
-                  <TableRow className={darkMode ? "bg-gray-900" : "bg-gray-50"}>
-                    <TableCell colSpan={8} className="p-4">
-                      <Box className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <h4 className="text-sm font-semibold mb-2">
-                            Container Details
-                          </h4>
-                          <div className="text-xs space-y-1">
-                            <p>
-                              <span className="font-medium">ID:</span> {task.id}
-                            </p>
-                            <p>
-                              <span className="font-medium">Created:</span>{" "}
-                              {new Date(task.created).toLocaleString()}
-                            </p>
-                            <p>
-                              <span className="font-medium">Ports:</span>{" "}
-                              {task.ports || "None"}
-                            </p>
-                            <p>
-                              <span className="font-medium">Network:</span>{" "}
-                              {task.network || "default"}
-                            </p>
-                          </div>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-semibold mb-2">
-                            Environment Variables
-                          </h4>
-                          <div className="text-xs space-y-1">
-                            {task.env && task.env.length > 0 ? (
-                              task.env.map((env, index) => (
-                                <p key={index}>{env}</p>
-                              ))
-                            ) : (
-                              <p>No environment variables</p>
-                            )}
-                          </div>
-                        </div>
-                      </Box>
-                      <Box className="mt-4">
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          onClick={() => onViewLogs(task.id)}
-                          startIcon={<VisibilityIcon />}
-                        >
-                          View Logs
-                        </Button>
+            sorted.map((t) => {
+              const running = t.status === 'running';
+              const busy = busyId === t.id;
+              const open = expanded === t.id;
+              return (
+                <React.Fragment key={t.id}>
+                  <TableRow hover sx={{ '& > td': { borderBottom: open ? 'none' : undefined } }}>
+                    <TableCell padding="checkbox">
+                      <IconButton size="small" aria-label="details" onClick={() => setExpanded(open ? null : t.id)}>
+                        {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+                      </IconButton>
+                    </TableCell>
+                    <TableCell>
+                      <Box className="flex items-center gap-1">
+                        {t.name}
+                        {t.protected && (
+                          <Tooltip title="Part of this stack. Stop and remove are disabled.">
+                            <LockIcon sx={{ fontSize: 14 }} color="disabled" />
+                          </Tooltip>
+                        )}
+                        {t.managed && <Chip label="created here" size="small" variant="outlined" sx={{ ml: 1, height: 20 }} />}
                       </Box>
                     </TableCell>
+                    <TableCell className="font-mono text-xs">{t.image}</TableCell>
+                    <TableCell>
+                      <Chip label={t.status} color={statusColor(t.status)} size="small" />
+                    </TableCell>
+                    <TableCell align="right">{running ? formatUptime(t.uptime) : '—'}</TableCell>
+                    <TableCell align="right">{running ? t.cpu.toFixed(1) : '—'}</TableCell>
+                    <TableCell align="right" sx={{ minWidth: 130 }}>
+                      {running ? (
+                        <Tooltip title={t.memory_limit ? `limit ${formatBytes(t.memory_limit)}` : ''}>
+                          <div>
+                            {formatBytes(t.memory)}
+                            {t.memory_limit > 0 && (
+                              <LinearProgress variant="determinate" value={Math.min(percent(t.memory, t.memory_limit), 100)} sx={{ mt: 0.5, height: 3, borderRadius: 2 }} />
+                            )}
+                          </div>
+                        </Tooltip>
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
+                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                      {busy ? (
+                        <CircularProgress size={20} sx={{ mr: 1 }} />
+                      ) : (
+                        <>
+                          <Action title="Logs" onClick={() => onViewLogs(t)} color="primary">
+                            <ArticleIcon fontSize="small" />
+                          </Action>
+                          <Action title="Terminal" onClick={() => onOpenTerminal(t)} disabled={!running}>
+                            <TerminalIcon fontSize="small" />
+                          </Action>
+                          {running ? (
+                            <Action title="Stop" onClick={() => onAction(t, 'stop')} color="error" disabled={t.protected}>
+                              <StopIcon fontSize="small" />
+                            </Action>
+                          ) : (
+                            <Action title="Start" onClick={() => onAction(t, 'start')} color="success">
+                              <PlayArrowIcon fontSize="small" />
+                            </Action>
+                          )}
+                          <Action title="Restart" onClick={() => onAction(t, 'restart')} color="warning" disabled={t.protected}>
+                            <RestartAltIcon fontSize="small" />
+                          </Action>
+                          <Action title="Kill" onClick={() => onAction(t, 'kill')} color="error" disabled={!running || t.protected}>
+                            <BoltIcon fontSize="small" />
+                          </Action>
+                          <Action title="Remove" onClick={() => onAction(t, 'remove')} color="error" disabled={t.protected}>
+                            <DeleteIcon fontSize="small" />
+                          </Action>
+                        </>
+                      )}
+                    </TableCell>
                   </TableRow>
-                )}
-              </React.Fragment>
-            ))
+                  {open && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="bg-gray-50 dark:bg-gray-900">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1 text-xs py-2">
+                          <p><span className="font-medium">ID</span> <span className="font-mono">{t.id}</span></p>
+                          <p><span className="font-medium">Created</span> {new Date(t.created).toLocaleString()}</p>
+                          <p><span className="font-medium">Ports</span> {t.ports || 'none'}</p>
+                          <p><span className="font-medium">Network</span> {t.network || '—'}</p>
+                          <p className="md:col-span-2">
+                            <span className="font-medium">Environment</span>{' '}
+                            {t.env.length ? t.env.join(', ') : 'none'}{' '}
+                            <span className="text-gray-500">(names only; values are never sent to the browser)</span>
+                          </p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </React.Fragment>
+              );
+            })
           )}
         </TableBody>
       </Table>
@@ -342,28 +198,30 @@ const TaskTable = ({
   );
 };
 
+const taskShape = PropTypes.shape({
+  id: PropTypes.string.isRequired,
+  name: PropTypes.string.isRequired,
+  image: PropTypes.string.isRequired,
+  status: PropTypes.string.isRequired,
+  uptime: PropTypes.number.isRequired,
+  cpu: PropTypes.number.isRequired,
+  memory: PropTypes.number.isRequired,
+  memory_limit: PropTypes.number,
+  created: PropTypes.string,
+  ports: PropTypes.string,
+  network: PropTypes.string,
+  env: PropTypes.arrayOf(PropTypes.string),
+  managed: PropTypes.bool,
+  protected: PropTypes.bool,
+});
+
 TaskTable.propTypes = {
-  tasks: PropTypes.arrayOf(
-    PropTypes.shape({
-      id: PropTypes.string.isRequired,
-      name: PropTypes.string.isRequired,
-      image: PropTypes.string.isRequired,
-      status: PropTypes.string.isRequired,
-      uptime: PropTypes.number.isRequired,
-      cpu: PropTypes.number.isRequired,
-      memory: PropTypes.number.isRequired,
-      created: PropTypes.string,
-      ports: PropTypes.string,
-      network: PropTypes.string,
-      env: PropTypes.arrayOf(PropTypes.string),
-    })
-  ),
+  tasks: PropTypes.arrayOf(taskShape).isRequired,
   loading: PropTypes.bool,
+  busyId: PropTypes.string,
+  onAction: PropTypes.func.isRequired,
   onViewLogs: PropTypes.func.isRequired,
-  onStop: PropTypes.func.isRequired,
-  onStart: PropTypes.func.isRequired,
-  onRestart: PropTypes.func.isRequired,
-  onDelete: PropTypes.func.isRequired,
+  onOpenTerminal: PropTypes.func.isRequired,
 };
 
 export default TaskTable;

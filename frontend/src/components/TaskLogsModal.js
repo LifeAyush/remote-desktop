@@ -1,229 +1,127 @@
-import React, { useState, useEffect, useRef, useContext } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
-import { 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  Button, 
-  Typography, 
+import {
+  Alert,
   Box,
-  IconButton,
-  CircularProgress,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControlLabel,
+  IconButton,
+  LinearProgress,
   Switch,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import DownloadIcon from '@mui/icons-material/Download';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import { usePolling } from '../utils/api';
-import ThemeContext from '../contexts/ThemeContext';
+import { toast } from 'react-toastify';
+import api, { usePolling } from '../utils/api';
 
-const TaskLogsModal = ({ 
-  open, 
-  onClose, 
-  taskId, 
-  taskName, 
-  fetchLogs
-}) => {
+const TaskLogsModal = ({ task, onClose }) => {
   const [logs, setLogs] = useState('');
   const [loading, setLoading] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [follow, setFollow] = useState(true);
   const [error, setError] = useState('');
-  const logsEndRef = useRef(null);
-  const { darkMode } = useContext(ThemeContext);
+  const endRef = useRef(null);
 
-  const getLogs = async () => {
-    if (!taskId) return;
-    
+  const load = useCallback(async () => {
+    if (!task) return;
     setLoading(true);
-    setError('');
-    
     try {
-      const logsData = await fetchLogs(taskId);
-      setLogs(logsData);
+      setLogs(await api.taskLogs(task.id));
+      setError('');
     } catch (err) {
-      console.error('Failed to fetch logs:', err);
-      setError('Failed to fetch logs. Please try again.');
+      setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
-
-  // Set up polling when autoRefresh is enabled
-  const { startPolling, stopPolling } = usePolling(getLogs, 3000);
+  }, [task]);
 
   useEffect(() => {
-    if (open && taskId) {
-      getLogs();
-    } else {
-      // Reset state when modal is closed
-      setLogs('');
-      setError('');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, taskId]);
+    setLogs('');
+    setError('');
+  }, [task]);
+
+  usePolling(load, 3000, !!task && follow);
 
   useEffect(() => {
-    if (autoRefresh) {
-      startPolling();
-    } else {
-      stopPolling();
-    }
-    
-    return () => stopPolling();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRefresh]);
+    if (follow) endRef.current?.scrollIntoView({ block: 'end' });
+  }, [logs, follow]);
 
-  // Scroll to bottom when logs update
-  useEffect(() => {
-    if (logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [logs]);
+  const copy = () =>
+    navigator.clipboard.writeText(logs).then(
+      () => toast.success('Logs copied'),
+      () => toast.error('Clipboard is not available')
+    );
 
-  const handleCopyLogs = () => {
-    navigator.clipboard.writeText(logs)
-      .then(() => {
-        // Could show a toast notification here
-        console.log('Logs copied to clipboard');
-      })
-      .catch(err => {
-        console.error('Failed to copy logs:', err);
-      });
-  };
-
-  const handleDownloadLogs = () => {
-    const blob = new Blob([logs], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([logs], { type: 'text/plain' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${taskName || taskId}-logs-${new Date().toISOString().slice(0, 10)}.txt`;
-    document.body.appendChild(a);
+    a.download = `${task.name}-${new Date().toISOString().slice(0, 19)}.log`;
     a.click();
-    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
   return (
-    <Dialog 
-      open={open} 
-      onClose={onClose} 
-      maxWidth="lg" 
-      fullWidth
-      PaperProps={{
-        className: darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'
-      }}
-    >
+    <Dialog open={!!task} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle className="flex justify-between items-center">
-        <Typography variant="h6" component="div">
-          Logs: {taskName || taskId}
-        </Typography>
-        <IconButton 
-          edge="end" 
-          color="inherit" 
-          onClick={onClose} 
-          aria-label="close"
-        >
+        Logs · {task?.name}
+        <IconButton onClick={onClose} aria-label="close">
           <CloseIcon />
         </IconButton>
       </DialogTitle>
-      
-      <Box className="px-6 py-2 flex justify-between items-center border-b border-gray-200 dark:border-gray-700">
+      <Box className="px-6 pb-2 flex justify-between items-center">
         <FormControlLabel
-          control={
-            <Switch
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-              color="primary"
-            />
-          }
-          label="Auto-refresh logs"
+          control={<Switch checked={follow} onChange={(e) => setFollow(e.target.checked)} />}
+          label="Follow (refresh every 3 s)"
         />
-        
-        <Box className="flex items-center gap-2">
-          <Tooltip title="Refresh logs">
-            <IconButton onClick={getLogs} disabled={loading}>
-              <RefreshIcon />
-            </IconButton>
+        <Box>
+          <Tooltip title="Refresh">
+            <span>
+              <IconButton onClick={load} disabled={loading}>
+                <RefreshIcon />
+              </IconButton>
+            </span>
           </Tooltip>
-          
-          <Tooltip title="Copy to clipboard">
-            <IconButton onClick={handleCopyLogs} disabled={!logs}>
-              <ContentCopyIcon />
-            </IconButton>
+          <Tooltip title="Copy">
+            <span>
+              <IconButton onClick={copy} disabled={!logs}>
+                <ContentCopyIcon />
+              </IconButton>
+            </span>
           </Tooltip>
-          
-          <Tooltip title="Download logs">
-            <IconButton onClick={handleDownloadLogs} disabled={!logs}>
-              <DownloadIcon />
-            </IconButton>
+          <Tooltip title="Download">
+            <span>
+              <IconButton onClick={download} disabled={!logs}>
+                <DownloadIcon />
+              </IconButton>
+            </span>
           </Tooltip>
         </Box>
       </Box>
-      
-      <DialogContent 
-        className={`p-0 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}
-      >
-        {loading && !logs && (
-          <Box className="flex justify-center items-center p-8">
-            <CircularProgress />
-          </Box>
-        )}
-        
-        {error && (
-          <Box className="p-4 text-red-500">
-            <Typography variant="body2" color="error">
-              {error}
-            </Typography>
-          </Box>
-        )}
-        
-        {!loading && !error && !logs && (
-          <Box className="p-8 text-center">
-            <Typography variant="body1" color="textSecondary">
-              No logs available for this container
-            </Typography>
-          </Box>
-        )}
-        
-        {logs && (
-          <Box 
-            className={`p-4 font-mono text-sm overflow-auto whitespace-pre max-h-[60vh] ${
-              darkMode ? 'bg-gray-900 text-gray-200' : 'bg-gray-50 text-gray-800'
-            }`}
-          >
-            {logs}
-            <div ref={logsEndRef} />
-          </Box>
-        )}
+      {loading && !logs ? <LinearProgress /> : <Box sx={{ height: 4 }} />}
+      <DialogContent sx={{ p: 0 }}>
+        {error && <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>}
+        <pre className="m-0 p-4 font-mono text-xs leading-5 whitespace-pre-wrap break-all bg-gray-900 text-gray-100 min-h-[200px] max-h-[60vh] overflow-auto">
+          {logs || (!loading && !error ? 'No output yet.' : '')}
+          <span ref={endRef} />
+        </pre>
       </DialogContent>
-      
-      <DialogActions className="p-4">
-        {loading && (
-          <Box className="mr-auto flex items-center gap-2">
-            <CircularProgress size={16} />
-            <Typography variant="body2" color="textSecondary">
-              Fetching logs...
-            </Typography>
-          </Box>
-        )}
-        <Button onClick={onClose} color="primary">
-          Close
-        </Button>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
       </DialogActions>
     </Dialog>
   );
 };
 
 TaskLogsModal.propTypes = {
-  open: PropTypes.bool.isRequired,
+  task: PropTypes.shape({ id: PropTypes.string.isRequired, name: PropTypes.string.isRequired }),
   onClose: PropTypes.func.isRequired,
-  taskId: PropTypes.string,
-  taskName: PropTypes.string,
-  fetchLogs: PropTypes.func.isRequired
 };
 
 export default TaskLogsModal;

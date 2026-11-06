@@ -1,187 +1,83 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Alert, Box, Button, Chip, MenuItem, Paper, TextField, Typography } from '@mui/material';
 import Terminal from '../components/Terminal';
-import { 
-  Paper, 
-  Typography, 
-  Box, 
-  FormControl, 
-  InputLabel, 
-  Select, 
-  MenuItem, 
-  Button,
-  TextField,
-  IconButton
-} from '@mui/material';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import SettingsIcon from '@mui/icons-material/Settings';
-import { API_BASE_URL } from '../utils/api';
+import { useAuth } from '../contexts/AuthContext';
+import api, { wsUrl } from '../utils/api';
+
+const STATUS_COLOR = { connecting: 'warning', connected: 'success', closed: 'default' };
 
 const TerminalPage = () => {
-  const [server, setServer] = useState('');
-  const [isConnected, setIsConnected] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [customEndpoint, setCustomEndpoint] = useState('');
-  const [terminalKey, setTerminalKey] = useState(Date.now()); // For forcing terminal reconnection
+  const { token } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const [tasks, setTasks] = useState([]);
+  const [error, setError] = useState('');
+  const [selected, setSelected] = useState(params.get('task') || '');
+  const [session, setSession] = useState(null); // { id, key }
+  const [status, setStatus] = useState('closed');
 
-  // Example server list - this would come from your API in a real implementation
-  const servers = [
-    { id: 'server1', name: 'Production Server', host: 'prod-server' }
-  ];
+  useEffect(() => {
+    api
+      .tasks()
+      .then((all) => setTasks(all.filter((t) => t.status === 'running')))
+      .catch((err) => setError(err.message));
+  }, []);
 
-  const handleConnect = () => {
-    if (server) {
-      setIsConnected(true);
+  // Opened from the containers page with ?task=…: connect straight away.
+  useEffect(() => {
+    const id = params.get('task');
+    if (id && tasks.some((t) => t.id === id) && !session) {
+      setSession({ id, key: Date.now() });
     }
-  };
+  }, [params, tasks, session]);
 
-  const handleDisconnect = () => {
-    setIsConnected(false);
-    setServer('');
-  };
+  const current = useMemo(() => tasks.find((t) => t.id === session?.id), [tasks, session]);
 
-  const handleRefresh = () => {
-    // Force terminal to reconnect by changing its key
-    setTerminalKey(Date.now());
-  };
-
-  const getWebSocketUrl = () => {
-    // Use custom endpoint if provided, otherwise construct from API base and server
-    if (customEndpoint) {
-      return customEndpoint;
-    }
-
-    // Add ws:// or wss:// prefix if needed
-    let url = `${API_BASE_URL}/ws`;
-    
-    // Add server details if available
-    if (server) {
-      const selectedServer = servers.find(s => s.id === server);
-      if (selectedServer) {
-        url += `/terminal/${selectedServer.host}`;
-      }
-    }
-    
-    // Ensure WebSocket protocol is used
-    if (url.startsWith('http://')) {
-      url = url.replace('http://', 'ws://');
-    } else if (url.startsWith('https://')) {
-      url = url.replace('https://', 'wss://');
-    } else if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
-      url = `ws://${url}`;
-    }
-    
-    return url;
+  const connect = () => {
+    setParams({ task: selected });
+    setSession({ id: selected, key: Date.now() });
   };
 
   return (
-    <div className="p-6 h-full flex flex-col">
-      <Box className="mb-6 flex justify-between items-center">
-        <Typography variant="h4" component="h1" gutterBottom>
-          SSH Terminal
-        </Typography>
-        <IconButton onClick={() => setShowSettings(!showSettings)} color="primary">
-          <SettingsIcon />
-        </IconButton>
-      </Box>
-
-      {showSettings && (
-        <Paper elevation={3} className="mb-6 p-4 dark:bg-gray-800">
-          <Typography variant="subtitle1" gutterBottom>
-            Terminal Settings
-          </Typography>
-          <Box className="flex gap-4 flex-wrap">
-            <TextField
-              label="Custom WebSocket Endpoint"
-              variant="outlined"
-              size="small"
-              fullWidth
-              value={customEndpoint}
-              onChange={(e) => setCustomEndpoint(e.target.value)}
-              placeholder="ws://localhost:8000/ssh"
-              helperText="Leave empty to use the default endpoint"
-              className="mb-2"
-            />
+    <div className="p-6 h-full flex flex-col gap-4">
+      {error && <Alert severity="error">Could not load containers: {error}</Alert>}
+      <Paper elevation={1} className="p-4 flex flex-wrap gap-3 items-center">
+        <TextField
+          select
+          size="small"
+          label="Running container"
+          value={tasks.some((t) => t.id === selected) ? selected : ''}
+          onChange={(e) => setSelected(e.target.value)}
+          sx={{ minWidth: 280 }}
+          helperText={tasks.length ? ' ' : 'No running containers'}
+        >
+          {tasks.map((t) => (
+            <MenuItem key={t.id} value={t.id}>
+              {t.name} <span className="ml-2 text-xs text-gray-500 font-mono">{t.image}</span>
+            </MenuItem>
+          ))}
+        </TextField>
+        <Button variant="contained" onClick={connect} disabled={!selected || !tasks.some((t) => t.id === selected)} sx={{ mb: 2.5 }}>
+          {session ? 'Reconnect' : 'Connect'}
+        </Button>
+        {session && (
+          <Button variant="outlined" onClick={() => setSession(null)} sx={{ mb: 2.5 }}>
+            Disconnect
+          </Button>
+        )}
+        {session && (
+          <Box className="ml-auto flex items-center gap-2 mb-5">
+            <Typography variant="body2">{current?.name || session.id}</Typography>
+            <Chip size="small" label={status} color={STATUS_COLOR[status]} />
           </Box>
-        </Paper>
-      )}
-
-      {!isConnected ? (
-        <Paper elevation={3} className="p-4 mb-4 dark:bg-gray-800">
-          <Typography variant="h6" gutterBottom>
-            Connect to Server
-          </Typography>
-          <Box className="flex gap-4 flex-wrap items-end">
-            <FormControl variant="outlined" className="min-w-[250px]">
-              <InputLabel id="server-select-label">Select Server</InputLabel>
-              <Select
-                labelId="server-select-label"
-                id="server-select"
-                value={server}
-                onChange={(e) => setServer(e.target.value)}
-                label="Select Server"
-                sx={{
-                  '& .MuiSelect-select': {
-                    width: '140px'
-                  }
-                }}
-              >
-                {servers.map((server) => (
-                  <MenuItem key={server.id} value={server.id}>
-                    {server.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <Button 
-              variant="contained" 
-              color="primary" 
-              onClick={handleConnect}
-              disabled={!server && !customEndpoint}
-              sx={{
-                height: '55px',
-                '&.Mui-disabled': {
-                  color: 'rgba(0, 0, 0, 0.26)',
-                  boxShadow: 'none',
-                  backgroundColor: 'rgba(0, 0, 0, 0.12)'
-                }
-              }}
-            >
-              Connect
-            </Button>
-          </Box>
-        </Paper>
-      ) : (
-        <Box className="mb-4 flex justify-between items-center">
-          <Typography variant="subtitle1">
-            {customEndpoint ? `Connected to custom endpoint: ${customEndpoint}` : 
-              `Connected to: ${servers.find(s => s.id === server)?.name || 'Custom Server'}`}
-          </Typography>
-          <Box>
-            <IconButton color="primary" className="mr-2" onClick={handleRefresh}>
-              <RefreshIcon />
-            </IconButton>
-            <Button variant="outlined" color="secondary" onClick={handleDisconnect}>
-              Disconnect
-            </Button>
-          </Box>
-        </Box>
-      )}
-
-      <Paper 
-        elevation={3} 
-        className="flex-1 p-1 relative overflow-hidden dark:bg-gray-900"
-        sx={{ display: 'flex', flexDirection: 'column' }}
-      >
-        {isConnected ? (
-          <Terminal 
-            key={terminalKey}
-            socketUrl={getWebSocketUrl()} 
-          />
+        )}
+      </Paper>
+      <Paper elevation={1} className="flex-1 min-h-[400px] overflow-hidden" sx={{ bgcolor: '#111827' }}>
+        {session ? (
+          <Terminal key={session.key} socketUrl={wsUrl(`/ws/terminal/${session.id}`)} token={token} onStatus={setStatus} />
         ) : (
-          <Box className="flex items-center justify-center h-full">
-            <Typography variant="body1" color="textSecondary">
-              Select a server and connect to start terminal session
-            </Typography>
+          <Box className="h-full flex items-center justify-center text-gray-400 text-sm p-8 text-center">
+            Pick a running container to open a shell inside it (bash if present, otherwise sh).
           </Box>
         )}
       </Paper>

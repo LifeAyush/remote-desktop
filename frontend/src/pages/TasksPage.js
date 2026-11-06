@@ -1,253 +1,119 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Typography, 
-  Box, 
-  Paper, 
-  Button, 
-  Grid, 
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  TextField,
-  InputAdornment,
-  IconButton,
-  Chip
-} from '@mui/material';
+import { Alert, Box, Button, InputAdornment, MenuItem, Paper, TextField, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
-import ClearIcon from '@mui/icons-material/Clear';
+import { toast } from 'react-toastify';
 import TaskTable from '../components/TaskTable';
 import TaskLogsModal from '../components/TaskLogsModal';
-import { usePolling } from '../utils/api';
-import api from '../utils/api';
-import { toast } from 'react-toastify';
+import ConfirmDialog from '../components/ConfirmDialog';
+import api, { usePolling } from '../utils/api';
+
+const PAST = { start: 'started', stop: 'stopped', restart: 'restarted', kill: 'killed', remove: 'removed' };
+const NEEDS_CONFIRM = {
+  kill: 'Kill sends SIGKILL. The process gets no chance to shut down cleanly.',
+  remove: 'Remove deletes the container and its writable layer. This cannot be undone.',
+};
 
 const TasksPage = () => {
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [logsModal, setLogsModal] = useState({ open: false, taskId: null, taskName: null });
-  const navigate = useNavigate();
+  const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
+  const [busyId, setBusyId] = useState(null);
+  const [logsFor, setLogsFor] = useState(null);
+  const [confirm, setConfirm] = useState(null);
 
-  const { fetchContainers, startContainer, stopContainer, restartContainer, deleteContainer, fetchContainerLogs } = api;
-
-  // Fetch container data
-  const loadContainers = async () => {
+  const load = async () => {
     try {
-      setLoading(true);
-      const data = await fetchContainers();
-      setTasks(data);
-    } catch (error) {
-      console.error('Failed to fetch containers:', error);
-      toast.error('Failed to fetch containers');
+      setTasks(await api.tasks());
+      setError('');
+    } catch (err) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
+  usePolling(load, 3000);
 
-  // Setup polling to refresh container data
-  const { startPolling, stopPolling } = usePolling(loadContainers, 5000);
-
-  // useEffect(() => {
-  //   loadContainers();
-  //   startPolling();
-    
-  //   return () => stopPolling();
-  //   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // }, []);
-
-  // Handle container actions
-  const handleViewLogs = (id) => {
-    const task = tasks.find(t => t.id === id);
-    setLogsModal({
-      open: true,
-      taskId: id,
-      taskName: task ? task.name : null
-    });
-  };
-
-  const handleStartContainer = async (id) => {
+  const run = async (task, action) => {
+    setConfirm(null);
+    setBusyId(task.id);
     try {
-      await startContainer(id);
-      toast.success('Container started successfully');
-      loadContainers(); // Refresh container list
-    } catch (error) {
-      console.error('Failed to start container:', error);
-      toast.error('Failed to start container');
+      if (action === 'remove') await api.removeTask(task.id);
+      else await api.taskAction(task.id, action);
+      toast.success(`${task.name} ${PAST[action]}`);
+      await load();
+    } catch (err) {
+      toast.error(`${task.name}: ${err.message}`);
+    } finally {
+      setBusyId(null);
     }
   };
 
-  const handleStopContainer = async (id) => {
-    try {
-      await stopContainer(id);
-      toast.success('Container stopped successfully');
-      loadContainers(); // Refresh container list
-    } catch (error) {
-      console.error('Failed to stop container:', error);
-      toast.error('Failed to stop container');
-    }
-  };
+  const onAction = (task, action) => (NEEDS_CONFIRM[action] ? setConfirm({ task, action }) : run(task, action));
 
-  const handleRestartContainer = async (id) => {
-    try {
-      await restartContainer(id);
-      toast.success('Container restarted successfully');
-      loadContainers(); // Refresh container list
-    } catch (error) {
-      console.error('Failed to restart container:', error);
-      toast.error('Failed to restart container');
-    }
-  };
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return tasks.filter(
+      (t) =>
+        (status === 'all' || (status === 'other' ? !['running', 'exited'].includes(t.status) : t.status === status)) &&
+        (!q || [t.name, t.image, t.id].some((v) => v.toLowerCase().includes(q)))
+    );
+  }, [tasks, query, status]);
 
-  const handleDeleteContainer = async (id) => {
-    // TODO: add a confirmation dialog here
-    try {
-      await deleteContainer(id);
-      toast.success('Container deleted successfully');
-      loadContainers(); // Refresh container list
-    } catch (error) {
-      console.error('Failed to delete container:', error);
-      toast.error('Failed to delete container');
-    }
-  };
-
-  const handleFetchLogs = async (id) => {
-    try {
-      return await fetchContainerLogs(id);
-    } catch (error) {
-      console.error('Failed to fetch logs:', error);
-      throw error;
-    }
-  };
-
-  // Filter tasks
-  const filteredTasks = tasks.filter(task => {
-    const matchesSearch = searchTerm === '' || 
-      task.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      task.image.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      task.id.toLowerCase().includes(searchTerm.toLowerCase());
-      
-    const matchesStatus = statusFilter === 'all' || 
-      (statusFilter === 'running' && task.status.toLowerCase().includes('running')) ||
-      (statusFilter === 'stopped' && task.status.toLowerCase().includes('exited')) ||
-      (statusFilter === 'other' && 
-        !task.status.toLowerCase().includes('running') && 
-        !task.status.toLowerCase().includes('exited'));
-        
-    return matchesSearch && matchesStatus;
-  });
+  const running = tasks.filter((t) => t.status === 'running').length;
 
   return (
-    <div className="p-6 h-full">
-      <Box className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <Typography variant="h4" component="h1">
-          Task Manager
+    <div className="p-6 space-y-4">
+      <Box className="flex flex-wrap gap-3 justify-between items-center">
+        <Typography variant="body2" color="text.secondary">
+          {tasks.length} containers · {running} running · refreshes every 3 s
         </Typography>
-        
-        <Box className="flex gap-2">
-          <Button 
-            variant="outlined" 
-            startIcon={<RefreshIcon />}
-            onClick={loadContainers}
-            disabled={loading}
-          >
-            Refresh
-          </Button>
-          <Button 
-            variant="contained" 
-            color="primary"
-            startIcon={<AddIcon />}
-            onClick={() => navigate('/tasks/create')}
-          >
-            Create Task
-          </Button>
-        </Box>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/tasks/new')}>
+          New container
+        </Button>
       </Box>
 
-      <Paper elevation={2} className="p-4 mb-6 dark:bg-gray-800">
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              variant="outlined"
-              placeholder="Search by name, image, or ID"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon />
-                  </InputAdornment>
-                ),
-                endAdornment: searchTerm && (
-                  <InputAdornment position="end">
-                    <IconButton size="small" onClick={() => setSearchTerm('')}>
-                      <ClearIcon />
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <FormControl fullWidth variant="outlined">
-              <InputLabel id="status-filter-label">Status</InputLabel>
-              <Select
-                labelId="status-filter-label"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                label="Status"
-                sx={{
-                  '& .MuiSelect-select': {
-                    width: '140px'
-                  }
-                }}
-              >
-                <MenuItem value="all">All Statuses</MenuItem>
-                <MenuItem value="running">Running</MenuItem>
-                <MenuItem value="stopped">Stopped</MenuItem>
-                <MenuItem value="other">Other</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={3} className="flex items-center">
-            <Box className="text-sm text-gray-600 dark:text-gray-300">
-              {filteredTasks.length} container{filteredTasks.length !== 1 ? 's' : ''} found
-              {statusFilter !== 'all' && (
-                <Chip 
-                  label={`Status: ${statusFilter}`} 
-                  onDelete={() => setStatusFilter('all')}
-                  size="small"
-                  className="ml-2"
-                />
-              )}
-            </Box>
-          </Grid>
-        </Grid>
-      </Paper>
+      {error && <Alert severity="error">Could not load containers: {error}</Alert>}
 
-      <Paper elevation={3} className="overflow-hidden">
-        <TaskTable 
-          tasks={filteredTasks}
+      <Paper elevation={1}>
+        <Box className="flex flex-wrap gap-3 p-4">
+          <TextField
+            size="small"
+            placeholder="Search name, image or ID"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            sx={{ flex: '1 1 280px' }}
+            slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> } }}
+          />
+          <TextField select size="small" label="Status" value={status} onChange={(e) => setStatus(e.target.value)} sx={{ width: 160 }}>
+            <MenuItem value="all">All</MenuItem>
+            <MenuItem value="running">Running</MenuItem>
+            <MenuItem value="exited">Exited</MenuItem>
+            <MenuItem value="other">Other</MenuItem>
+          </TextField>
+        </Box>
+        <TaskTable
+          tasks={filtered}
           loading={loading}
-          onViewLogs={handleViewLogs}
-          onStart={handleStartContainer}
-          onStop={handleStopContainer}
-          onRestart={handleRestartContainer}
-          onDelete={handleDeleteContainer}
+          busyId={busyId}
+          onAction={onAction}
+          onViewLogs={setLogsFor}
+          onOpenTerminal={(t) => navigate(`/terminal?task=${encodeURIComponent(t.id)}`)}
         />
       </Paper>
 
-      <TaskLogsModal 
-        open={logsModal.open}
-        onClose={() => setLogsModal({ ...logsModal, open: false })}
-        taskId={logsModal.taskId}
-        taskName={logsModal.taskName}
-        fetchLogs={handleFetchLogs}
+      <TaskLogsModal task={logsFor} onClose={() => setLogsFor(null)} />
+      <ConfirmDialog
+        open={!!confirm}
+        title={confirm ? `${confirm.action === 'kill' ? 'Kill' : 'Remove'} ${confirm.task.name}?` : ''}
+        message={confirm ? NEEDS_CONFIRM[confirm.action] : ''}
+        confirmLabel={confirm?.action === 'kill' ? 'Kill' : 'Remove'}
+        onConfirm={() => run(confirm.task, confirm.action)}
+        onClose={() => setConfirm(null)}
       />
     </div>
   );

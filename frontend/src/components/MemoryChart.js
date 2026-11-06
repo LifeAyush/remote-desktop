@@ -11,15 +11,6 @@ import {
   Legend
 } from 'recharts';
 
-// Utility function to format memory values
-const formatMemory = (bytes) => {
-  if (bytes === 0) return '0 B';
-  
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${parseFloat((bytes / Math.pow(1024, i)).toFixed(2))} ${sizes[i]}`;
-};
-
 // Utility to convert bytes to GB for chart display
 const bytesToGB = (bytes) => {
   return (bytes / 1024 / 1024 / 1024).toFixed(2);

@@ -3,47 +3,21 @@ import MonitorPage from './pages/MonitorPage';
 import TasksPage from './pages/TasksPage';
 import TerminalPage from './pages/TerminalPage';
 import CreateTaskPage from './pages/CreateTaskPage';
-import SettingsPage from './pages/SettingsPage';
-import HelpPage from './pages/HelpPage';
-import ServersPage from './pages/ServersPage';
+
+export const pages = [
+  { path: '/monitor', title: 'System Monitoring' },
+  { path: '/tasks', title: 'Containers' },
+  { path: '/tasks/new', title: 'New Container' },
+  { path: '/terminal', title: 'Terminal' },
+];
 
 const routes = [
-  {
-    path: '/',
-    element: <Navigate to="/monitor" replace />
-  },
-  {
-    path: '/monitor',
-    element: <MonitorPage />
-  },
-  {
-    path: '/tasks',
-    element: <TasksPage />
-  },
-  {
-    path: '/terminal',
-    element: <TerminalPage />
-  },
-  {
-    path: '/create-task',
-    element: <CreateTaskPage />
-  },
-  {
-    path: '/settings',
-    element: <SettingsPage />
-  },
-  {
-    path: '/help',
-    element: <HelpPage />
-  },
-  {
-    path: '/servers',
-    element: <ServersPage />
-  },
-  {
-    path: '*',
-    element: <Navigate to="/monitor" replace />
-  }
+  { path: '/', element: <Navigate to="/monitor" replace /> },
+  { path: '/monitor', element: <MonitorPage /> },
+  { path: '/tasks', element: <TasksPage /> },
+  { path: '/tasks/new', element: <CreateTaskPage /> },
+  { path: '/terminal', element: <TerminalPage /> },
+  { path: '*', element: <Navigate to="/monitor" replace /> },
 ];
 
 export default routes;

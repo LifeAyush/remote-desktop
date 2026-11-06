@@ -1,205 +1,102 @@
-import React, { useEffect, useRef } from "react";
-import PropTypes from "prop-types";
-import { Terminal as XTerm } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
-import { WebLinksAddon } from "xterm-addon-web-links";
-import "xterm/css/xterm.css";
-import { API_BASE_URL } from "../utils/api";
+import React, { useEffect, useRef } from 'react';
+import PropTypes from 'prop-types';
+import { Terminal as XTerm } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import { WebLinksAddon } from '@xterm/addon-web-links';
+import '@xterm/xterm/css/xterm.css';
 
-const Terminal = ({ socketUrl, height = "100%" }) => {
-  const terminalRef = useRef(null);
-  const xtermRef = useRef(null);
-  const fitAddonRef = useRef(null);
-  const wsRef = useRef(null);
+const THEME = {
+  background: '#111827',
+  foreground: '#f9fafb',
+  cursor: '#f9fafb',
+  black: '#374151',
+  red: '#ef4444',
+  green: '#10b981',
+  yellow: '#f59e0b',
+  blue: '#3b82f6',
+  magenta: '#8b5cf6',
+  cyan: '#06b6d4',
+  white: '#f3f4f6',
+  brightBlack: '#6b7280',
+  brightRed: '#f87171',
+  brightGreen: '#34d399',
+  brightYellow: '#fbbf24',
+  brightBlue: '#60a5fa',
+  brightMagenta: '#a78bfa',
+  brightCyan: '#22d3ee',
+  brightWhite: '#ffffff',
+};
 
-  // Initialize terminal
+const CLOSE_REASONS = {
+  4401: 'token rejected',
+  4404: 'container not found',
+  4409: 'container is not running',
+};
+
+/** One shell session. Remount (change `key`) to reconnect. */
+const Terminal = ({ socketUrl, token, onStatus }) => {
+  const hostRef = useRef(null);
+  const statusRef = useRef(onStatus);
+  statusRef.current = onStatus;
+
   useEffect(() => {
-    // Wait for DOM to be ready
-    if (!terminalRef.current) return;
-
-    // Create terminal instance
-    xtermRef.current = new XTerm({
-      theme: {
-        background: "#1F2937",
-        foreground: "#F9FAFB",
-        cursor: "#F9FAFB",
-        black: "#374151",
-        red: "#EF4444",
-        green: "#10B981",
-        yellow: "#F59E0B",
-        blue: "#3B82F6",
-        magenta: "#8B5CF6",
-        cyan: "#06B6D4",
-        white: "#F3F4F6",
-        brightBlack: "#6B7280",
-        brightRed: "#F87171",
-        brightGreen: "#34D399",
-        brightYellow: "#FBBF24",
-        brightBlue: "#60A5FA",
-        brightMagenta: "#A78BFA",
-        brightCyan: "#22D3EE",
-        brightWhite: "#FFFFFF",
-      },
+    const term = new XTerm({
+      theme: THEME,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      fontSize: 14,
-      lineHeight: 1.2,
+      fontSize: 13,
       cursorBlink: true,
-      cursorStyle: "block",
-      scrollback: 1000,
-      allowTransparency: true,
+      scrollback: 5000,
     });
+    const fit = new FitAddon();
+    term.loadAddon(fit);
+    term.loadAddon(new WebLinksAddon());
+    term.open(hostRef.current);
 
-    // Add fit addon to resize terminal to container
-    const fitAddon = new FitAddon();
-    fitAddonRef.current = fitAddon;
-    xtermRef.current.loadAddon(fitAddon);
-
-    // Add web links addon for clickable URLs
-    const webLinksAddon = new WebLinksAddon();
-    xtermRef.current.loadAddon(webLinksAddon);
-
-    // Open terminal in the container
-    xtermRef.current.open(terminalRef.current);
-    
-    // Wait a moment before fitting to ensure DOM is ready
-    setTimeout(() => {
+    const ws = new WebSocket(socketUrl);
+    const send = (msg) => ws.readyState === WebSocket.OPEN && ws.send(JSON.stringify(msg));
+    const resize = () => {
       try {
-        if (fitAddonRef.current) {
-          fitAddonRef.current.fit();
-        }
-      } catch (e) {
-        console.error("Error fitting terminal:", e);
+        fit.fit();
+      } catch {
+        return;
       }
-    }, 100);
-
-    // Add welcome message
-    xtermRef.current.writeln(
-      "\x1B[1;34m=== Remote Desktop Terminal ===\x1B[0m"
-    );
-    xtermRef.current.writeln(
-      "Type commands to interact with the remote server."
-    );
-    xtermRef.current.writeln("");
-    xtermRef.current.write("$ ");
-
-    // Setup WebSocket connection
-    const wsUrl = `ws://localhost:8000/ws/client`;
-    console.log("Connecting to WebSocket:", wsUrl);
-    
-    try {
-      wsRef.current = new WebSocket(wsUrl);
-
-      wsRef.current.onopen = () => {
-        console.log("WebSocket connection opened");
-        if (xtermRef.current) {
-          xtermRef.current.writeln(
-            "\r\n\x1B[1;32mConnected to terminal server!\x1B[0m"
-          );
-          xtermRef.current.write("$ ");
-        }
-      };
-
-      wsRef.current.onmessage = (event) => {
-        console.log("Received message:", event.data);
-        if (xtermRef.current) {
-          xtermRef.current.write(event.data);
-        }
-      };
-
-      wsRef.current.onclose = (event) => {
-        console.log("WebSocket connection closed:", event.code, event.reason);
-        if (xtermRef.current) {
-          xtermRef.current.writeln(
-            "\r\n\x1B[1;31mDisconnected from terminal server\x1B[0m"
-          );
-          xtermRef.current.writeln("Reconnecting in 3 seconds...");
-        }
-        
-        // Attempt to reconnect after a delay
-        setTimeout(() => {
-          console.log("Attempting to reconnect...");
-          if (wsRef.current) {
-            wsRef.current = new WebSocket(wsUrl);
-          }
-        }, 3000);
-      };
-
-      wsRef.current.onerror = (error) => {
-        console.error("WebSocket error:", error);
-        if (xtermRef.current) {
-          xtermRef.current.writeln(
-            "\r\n\x1B[1;31mError connecting to terminal server\x1B[0m"
-          );
-        }
-      };
-    } catch (e) {
-      console.error("Error creating WebSocket connection:", e);
-      if (xtermRef.current) {
-        xtermRef.current.writeln(
-          "\r\n\x1B[1;31mFailed to connect to terminal server\x1B[0m"
-        );
-      }
-    }
-
-    // Handle resizing
-    const handleResize = () => {
-      if (fitAddonRef.current && xtermRef.current) {
-        try {
-          fitAddonRef.current.fit();
-          
-          // Send terminal dimensions to server
-          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            const dimensions = {
-              cols: xtermRef.current.cols,
-              rows: xtermRef.current.rows
-            };
-            wsRef.current.send(JSON.stringify({
-              type: 'resize',
-              dimensions
-            }));
-          }
-        } catch (e) {
-          console.error("Error resizing terminal:", e);
-        }
-      }
+      send({ type: 'resize', cols: term.cols, rows: term.rows });
     };
 
-    window.addEventListener("resize", handleResize);
+    statusRef.current?.('connecting');
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'auth', token }));
+      resize();
+      term.focus();
+      statusRef.current?.('connected');
+    };
+    ws.onmessage = (e) => term.write(e.data);
+    ws.onclose = (e) => {
+      const reason = CLOSE_REASONS[e.code] || e.reason || (e.code === 1000 ? 'shell exited' : `connection closed (${e.code})`);
+      term.write(`\r\n\x1b[33m[session ended: ${reason}]\x1b[0m\r\n`);
+      statusRef.current?.('closed');
+    };
 
-    // Function to handle user input
-    xtermRef.current.onData((data) => {
-      // Don't echo locally - let the server echo back
-      // Send the data to the server
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          type: 'input',
-          data
-        }));
-      }
-    });
+    const input = term.onData((data) => send({ type: 'input', data }));
+    const observer = new ResizeObserver(() => resize());
+    observer.observe(hostRef.current);
 
-    // Cleanup
     return () => {
-      window.removeEventListener("resize", handleResize);
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-      if (xtermRef.current) {
-        xtermRef.current.dispose();
-      }
+      observer.disconnect();
+      input.dispose();
+      ws.onclose = null;
+      ws.close();
+      term.dispose();
     };
-  }, [socketUrl]);
+  }, [socketUrl, token]);
 
-  return (
-    <div className="terminal-container" style={{ height, width: "100%", position: "relative", overflow: "hidden" }}>
-      <div ref={terminalRef} style={{ height: "100%", width: "100%", position: "absolute", top: 0, left: 0 }} />
-    </div>
-  );
+  return <div ref={hostRef} className="h-full w-full p-2" />;
 };
 
 Terminal.propTypes = {
-  socketUrl: PropTypes.string,
-  height: PropTypes.string,
+  socketUrl: PropTypes.string.isRequired,
+  token: PropTypes.string.isRequired,
+  onStatus: PropTypes.func,
 };
 
 export default Terminal;
