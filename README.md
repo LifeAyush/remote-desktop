@@ -1,136 +1,95 @@
-# 🖥️ Remote Desktop Controller (React + FastAPI Integration)
+# Remote Desktop
 
-A full-featured Remote Desktop Controller frontend built with **React**, **Tailwind CSS**, and **Material UI (MUI)**. This app integrates seamlessly with a FastAPI backend using a mix of REST APIs and WebSockets. It provides real-time system monitoring, container task management, SSH terminal access, and task creation via ECR-style definitions.
+A web console for one Docker host. It shows live CPU, memory and processes, manages containers, streams their logs, and opens a real shell inside any running container from the browser.
 
-This repository is the web client. The FastAPI backend is not in this repo.
+React + MUI frontend, FastAPI backend on the Docker socket, nginx in front. One `docker compose up` runs it.
 
----
+## What it does
 
-## 🚀 Features
+- **Monitoring.** Host CPU (user, system, idle), memory, load and uptime every 2 s, with a rolling chart. The process list shows top processes by CPU, can be sorted and filtered, and is split into host and in-container processes.
+- **Containers.** Every container on the host, with live CPU and memory, refreshed every 3 s. You can start, stop, restart, kill and remove containers. Kill and remove ask for confirmation first. Logs can be followed, copied or downloaded.
+- **New container.** Pick a local image or pull one, then set the name, CPU and memory limits, command, environment variables and published ports. Review before anything starts.
+- **Terminal.** An `xterm.js` session over a WebSocket into `docker exec` with a real TTY: bash if the image has it, otherwise sh. Resizing works.
 
-### 📊 System Monitoring
-- Live CPU and memory usage display (system-level + per-process).
-- Graphs update every second for 30 seconds while viewing.
-- Visualized using Recharts.
-- Auto-polling via REST APIs.
+## Safety
 
-### 🧠 Task Manager
-- Lists all running Docker containers with metadata.
-- Interactive table with sortable headers.
-- Manage containers: **Stop**, **Restart**, **Kill**.
-- View logs in modal (logs fetched periodically).
+Anything that can reach the Docker socket is root on the host, so:
 
-### 🖥️ SSH Terminal
-- Stateless terminal powered by `xterm.js`.
-- Connects via WebSocket.
-- Real-time command execution and output.
-- Dark-themed terminal matches app dark mode.
+- **Token on every call.** Every API call needs `Authorization: Bearer <API_TOKEN>`. The terminal sends the token in its first WebSocket frame, never in the URL, so it stays out of access logs. The browser keeps it in `sessionStorage`.
+- **Nothing exposed beyond localhost.** The backend is not published. Only nginx is, on `127.0.0.1:8080`. Ports you publish for new containers also bind to `127.0.0.1`.
+- **The stack protects itself.** Its own containers carry `rdc.protected=true`, and the API refuses to stop, kill, restart or remove them.
+- **Environment values stay on the server.** The API returns variable names only, never their values.
+- **Validated input.** Container names, image references, environment variable names and port ranges are checked before Docker sees them.
 
-### 📦 Task Creation
-- Define and launch container tasks using ECR images.
-- Dropdown with metadata: name, size, creation date.
-- Customize environment variables, CPU, and memory.
-- Starts container and redirects to Task Manager on success.
+Put it behind your own VPN or SSH tunnel if you need it beyond localhost.
 
-### 🌗 Global Features
-- Full **dark/light mode** support.
-- Toast notifications for feedback.
-- Optimized for **desktop-only** use.
-- Global state managed via Context API.
-
----
-
-## 🧭 Project Structure
+## Run it
 
 ```bash
-/src
-├── /components
-│   ├── CPUChart.js
-│   ├── MemoryChart.js
-│   ├── Terminal.js
-│   ├── TaskTable.js
-│   ├── TaskLogsModal.js
-│   ├── TaskForm.js
-├── /pages
-│   ├── MonitorPage.js
-│   ├── TasksPage.js
-│   ├── TerminalPage.js
-│   ├── CreateTaskPage.js
-├── /contexts
-│   ├── ThemeContext.js
-├── /utils
-│   ├── api.js
-│   ├── usePolling.js
-├── App.js
-├── index.js
-└── routes.js
+export API_TOKEN=$(openssl rand -hex 24)
+docker compose up --build
 ```
 
----
+Open http://localhost:8080 and paste the token.
 
-## ⚙️ Installation
+`RUNTIME=demo docker compose up --build` swaps the Docker engine for an in-memory set of fake containers. The header shows a `demo` badge, and the demo terminal is a small stub shell.
 
-1. **Clone the repository**
+### Develop
+
 ```bash
-git clone https://github.com/LifeAyush/remote-desktop
-cd remote-desktop
-```
+# backend, on :8000
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+API_TOKEN=dev-token-123 RUNTIME=demo uvicorn app.main:app --reload   # or RUNTIME=docker
+pytest
 
-2. **Install dependencies**
-```bash
+# frontend, on :3000; /api and /ws are proxied to :8000
+cd frontend
 npm install
-```
-
-3. **Start the development server**
-```bash
 npm start
+npx react-scripts test
 ```
 
-Make sure the FastAPI backend is running and accessible for API and WebSocket connections.
+## Layout
 
----
-
-## 🌐 Environment Variables
-
-Create a `.env` file in the root:
-
+```text
+backend/
+  app/main.py                  FastAPI app, error mapping
+  app/routes/api.py            REST: metrics, containers, logs, images
+  app/routes/terminal.py       WebSocket shell bridge
+  app/runtime/base.py          ContainerRuntime interface
+  app/runtime/docker_runtime.py  Docker SDK implementation, background stats sampler
+  app/runtime/demo.py          in-memory runtime for tests and demos
+  app/metrics.py               psutil host metrics
+frontend/
+  src/pages/                   Monitoring, Containers, New Container, Terminal, Login
+  src/utils/api.js             API client and polling hook
+  nginx.conf                   static files plus /api and /ws proxy
+docker-compose.yml
 ```
-REACT_APP_API_BASE_URL=http://localhost:8000
-REACT_APP_WS_URL=ws://localhost:8000/ws
-```
 
----
+## API
 
-## 🔧 Scripts
+| Method | Path | |
+|---|---|---|
+| GET | `/api/session` | runtime and host name, used to check a token |
+| GET | `/api/metrics/system` | CPU, memory, load, uptime |
+| GET | `/api/metrics/processes` | top processes |
+| GET, POST | `/api/tasks` | list containers, create and start one |
+| GET, DELETE | `/api/tasks/{id}` | inspect, remove |
+| POST | `/api/tasks/{id}/{start\|stop\|restart\|kill}` | lifecycle |
+| GET | `/api/tasks/{id}/logs?tail=500` | recent logs with timestamps |
+| GET | `/api/images` | tagged local images |
+| POST | `/api/images/pull` | `{"ref": "nginx:1.27-alpine"}` |
+| WS | `/ws/terminal/{id}` | `{"type":"auth"}`, then `input` and `resize` frames |
 
-- `npm start` — Start development server.
-- `npm run build` — Create a production build.
-- `npm run lint` — Lint code for formatting issues.
+Errors come back as `{"detail": "..."}` with 400, 401, 404 or 409.
 
----
+## Credits
 
-## 🙌 Contributing
+Aniket Mohanty (Cole-Randolph) worked on the original frontend integration.
 
-1. Fork the repo
-2. Create your feature branch (`git checkout -b feature/feature-name`)
-3. Commit your changes (`git commit -am 'Add new feature'`)
-4. Push to the branch (`git push origin feature/feature-name`)
-5. Open a Pull Request
+## License
 
----
-
-## 📄 License
-
-MIT License. See [LICENSE](./LICENSE) for more details.
-
----
-
-## ✨ Acknowledgements
-
-- [React](https://reactjs.org/)
-- [Tailwind CSS](https://tailwindcss.com/)
-- [Material UI](https://mui.com/)
-- [xterm.js](https://xtermjs.org/)
-- [Recharts](https://recharts.org/)
-- [FastAPI](https://fastapi.tiangolo.com/)
-```
+MIT
