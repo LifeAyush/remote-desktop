@@ -1,0 +1,33 @@
+# Remote Desktop: React UI behind nginx, FastAPI backend on the Docker socket.
+#
+#   export API_TOKEN=$(openssl rand -hex 24)
+#   docker compose up --build
+#   open http://localhost:8080
+#
+# The backend can start, stop and exec into any container on this host, which
+# is root-equivalent. It is not published; only nginx is, and only on 127.0.0.1.
+
+services:
+  backend:
+    build: ./backend
+    environment:
+      API_TOKEN: ${API_TOKEN:?set API_TOKEN first, see the comment at the top of this file}
+      RUNTIME: ${RUNTIME:-docker}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # See host processes, not just the backend's own, on the monitoring page.
+    pid: host
+    labels:
+      rdc.protected: "true"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:${PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    labels:
+      rdc.protected: "true"
+    restart: unless-stopped
